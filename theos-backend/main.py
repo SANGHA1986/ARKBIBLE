@@ -79,10 +79,41 @@ try:
 except Exception:
     pass
 
+# Render 등: DB 비어 있으면 개역한글 PD 자동 적재 (백그라운드)
+try:
+    import bootstrap_cloud
+
+    if bootstrap_cloud.verse_count() < 1000:
+        bootstrap_cloud.start_bootstrap_background(force=False)
+except Exception as _boot_err:
+    print(f"[bootstrap] schedule failed: {_boot_err}", flush=True)
+
+
 @app.get("/")
 def read_root():
     return {"message": "Welcome to ARK AI Knowledge Graph API"}
 
+
+@app.get("/api/bootstrap/status")
+def bootstrap_status():
+    try:
+        import bootstrap_cloud
+
+        return bootstrap_cloud.status()
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/admin/bootstrap")
+def admin_bootstrap(
+    force: bool = False,
+    _: bool = Depends(board_api.require_admin),
+):
+    """관리자: 클라우드 DB 본문 적재 (이미 충분하면 force=1로 재실행)."""
+    import bootstrap_cloud
+
+    # 동기 실행 — Render Shell/수동 호출용. 웹 UI는 status로 폴링.
+    return bootstrap_cloud.run_bootstrap(force=force)
 import datetime
 from sqlalchemy import func
 
