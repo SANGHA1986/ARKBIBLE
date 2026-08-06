@@ -200,18 +200,21 @@ export default function Home() {
       .then((res) => (res.ok ? res.json() : null))
       .then((json) => {
         if (cancelled || !json) return;
-        const n = Number(json.verses_now || json.verses || 0);
+        const verses = Number(json.verses_now || json.verses || 0);
+        const commentaries = Number(json.commentaries_now || json.commentaries || 0);
+        const characters = Number(json.characters_now || json.characters || 0);
+        const sources = Number(json.sources_now || json.sources || 0);
         if (json.running) {
           setBootMsg(
             lang === "KO"
-              ? `클라우드에 성경 본문 적재 중… (현재 ${n.toLocaleString()}절). 1~2분 후 새로고침 해주세요.`
-              : `Loading Bible text into the cloud DB… (${n.toLocaleString()} verses). Refresh in a minute.`
+              ? `테스트 데이터 적재 중… (${json.phase || ""} / 본문 ${verses.toLocaleString()} · 주석 ${commentaries.toLocaleString()} · 인물 ${characters} · 자료 ${sources}). 완료까지 새로고침해 주세요.`
+              : `Loading beta data… (${json.phase || ""} / verses ${verses.toLocaleString()}, commentaries ${commentaries.toLocaleString()}, people ${characters}, sources ${sources}). Refresh until done.`
           );
-        } else if (n < 1000) {
+        } else if (verses < 30000 || commentaries < 500 || characters < 20) {
           setBootMsg(
             lang === "KO"
-              ? "본문 데이터가 아직 적습니다. 잠시 후 새로고침하거나 관리자에게 알려 주세요."
-              : "Bible data is still thin. Refresh shortly or contact the admin."
+              ? `적재가 아직 부족합니다 (본문 ${verses.toLocaleString()} · 주석 ${commentaries.toLocaleString()} · 인물 ${characters}). 잠시 후 새로고침하거나 API를 재배포해 주세요.`
+              : `Bootstrap still thin (verses ${verses}, commentaries ${commentaries}, people ${characters}). Refresh or redeploy API.`
           );
         } else {
           setBootMsg(null);
@@ -276,7 +279,8 @@ export default function Home() {
           explore: "탐색 카테고리",
           live: "흐르는 연구 노트",
           loading: "불러오는 중…",
-          catHint: "각 항목은 DB에 등록된 자료로 연결됩니다. 논문은 요금제 없이 바로 탐색됩니다.",
+          catHint:
+            "각 항목은 DB에 등록된 자료로 연결됩니다. 클라우드 적재 직후에는 수 분이 더 걸릴 수 있습니다.",
         }
       : {
           subtitle:
@@ -287,7 +291,8 @@ export default function Home() {
           explore: "Explore Categories",
           live: "Research Feed",
           loading: "Loading…",
-          catHint: "Each tile opens registered DB content. Papers are open in this test build.",
+          catHint:
+            "Each tile opens registered DB content. Cloud bootstrap may take a few more minutes after deploy.",
         };
 
   const topicRow = TOPICS.map((topic) => (

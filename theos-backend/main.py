@@ -79,11 +79,17 @@ try:
 except Exception:
     pass
 
-# Render 등: DB 비어 있으면 개역한글 PD 자동 적재 (백그라운드)
+# Render 등: 테스트용 데이터 자동 적재 (본문+주석+논문+지식망)
 try:
     import bootstrap_cloud
 
-    if bootstrap_cloud.verse_count() < 1000:
+    _c = bootstrap_cloud._counts()
+    if (
+        _c["verses"] < 30000
+        or _c["commentaries"] < 1000
+        or _c["characters"] < 50
+        or _c["sources"] < 40
+    ):
         bootstrap_cloud.start_bootstrap_background(force=False)
 except Exception as _boot_err:
     print(f"[bootstrap] schedule failed: {_boot_err}", flush=True)
