@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Serif+KR:wght@400;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,400&display=swap");
+
+:root {
+  --ark-brown: #b36b00;
+  --ark-gold: #d4a017;
+  --ark-navy: #0d1b2a;
+  --ark-grey: #687280;
+  --ark-bg: #faf8f5;
+}
+
+body {
+  color: var(--ark-navy);
+  background: var(--ark-bg);
+  min-height: 100vh;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #d6cfc4;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #b36b00;
+}
+
+@layer utilities {
+  .topic-scroll {
+    scrollbar-width: thin;
+  }
+}

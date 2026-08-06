@@ -1,0 +1,31 @@
+# dependencies / build
+node_modules/
+theos-web/node_modules/
+theos-web/.next/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# secrets
+.env
+.env.*
+!.env.example
+
+# local databases (배포 후 서버에서 다시 적재)
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# large caches / source dumps
+theos-backend/data_cache/
+theos-backend/data_ko_pd/*.source.jsonl
+theos-backend/.search_translate_cache.json
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+*.log
+.cursor/

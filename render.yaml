@@ -1,0 +1,27 @@
+# Render → New → Blueprint → 이 GitHub 저장소 선택
+services:
+  - type: web
+    name: ark-api
+    runtime: python
+    rootDir: theos-backend
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: ARK_OPEN_BETA
+        value: "1"
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: ARK_ADMIN_KEY
+        sync: false
+
+  - type: web
+    name: ark-web
+    runtime: node
+    rootDir: theos-web
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        sync: false

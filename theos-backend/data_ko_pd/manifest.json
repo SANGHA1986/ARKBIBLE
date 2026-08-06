@@ -1,0 +1,13 @@
+{
+  "version_code": "KO_GAEYEOK_1961",
+  "version_label": "개역한글(1961)",
+  "license_type": "Public Domain",
+  "copyright_status": "Public Domain",
+  "source_url": "https://github.com/crizin/bible-db/blob/main/NOTICE",
+  "attribution_text": "개역한글(1961) · Public Domain · 성경전서 개역한글판 (대한성서공회) · digital via crizin/bible-db NOTICE data/krv (holybible.or.kr 정본)",
+  "notice": "NOTICE 항목별 채택: data/krv/ 개역한글판(1961)만 Public Domain. 샘플 확인 — Gen1:2 '하나님의 신은'(개역개정 '영은'과 구분), John3:16 '저를 믿는/멸망치 않고'. 원본 수집처 holybible.or.kr, 대조 bible.bskorea.or.kr. Strong's·embeddings 등 타 항목은 미채택.",
+  "verified": true,
+  "data_file": "verses.jsonl",
+  "verified_at": "2026-08-04",
+  "verse_count_expected": 31101
+}

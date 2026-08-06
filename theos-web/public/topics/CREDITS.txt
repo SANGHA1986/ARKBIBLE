@@ -1,0 +1,8 @@
+# Topic card image credits (Unsplash License — free commercial use)
+# https://unsplash.com/license
+#
+# genesis.jpg   — open book / scripture study
+# romans.jpg    — library stacks
+# jesus.jpg     — books / study desk
+# paul.jpg      — world map (journeys)
+# covenant.jpg  — mountain night sky

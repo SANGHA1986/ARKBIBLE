@@ -1,0 +1,21 @@
+{
+  "title": "내 공개 연구 노트 제목",
+  "author": "본인 이름 또는 필명",
+  "publisher": "개인",
+  "source_url": "https://example.com/my-open-note",
+  "source_type": "Personal",
+  "tradition": "개인",
+  "copyright_status": "Personal Open",
+  "license_type": "CC BY 4.0",
+  "academic_level": "C",
+  "note": "직접 공개 허용한 개인 자료만 넣으세요. 타인 저작물·유료 논문 전문 금지.",
+  "verse": [
+    "요한복음",
+    3,
+    16
+  ],
+  "viewpoint": "개인",
+  "scholar_name": "본인",
+  "claim": "이 구절에 대한 주장 한 문장",
+  "evidence": "근거·인용·메모"
+}
