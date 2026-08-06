@@ -67,28 +67,70 @@ const TOPICS = [
 ];
 
 const CATEGORIES = [
-  { ko: "성경", en: "Bible", icon: BookOpen, hrefKo: "/search?q=성경", hrefEn: "/search?q=bible" },
-  { ko: "인물", en: "People", icon: User, hrefKo: "/search?q=인물", hrefEn: "/search?q=people" },
-  { ko: "사건", en: "Events", icon: CalendarDays, hrefKo: "/search?q=사건", hrefEn: "/search?q=events" },
-  { ko: "장소", en: "Places", icon: MapPin, hrefKo: "/search?q=장소", hrefEn: "/search?q=places" },
-  { ko: "교리", en: "Doctrine", icon: GitBranch, hrefKo: "/search?q=교리", hrefEn: "/search?q=doctrine" },
-  { ko: "원어", en: "Lexicon", icon: Languages, hrefKo: "/study", hrefEn: "/study" },
-  { ko: "교부", en: "Fathers", icon: Landmark, hrefKo: "/search?q=교부", hrefEn: "/search?q=fathers" },
+  {
+    ko: "성경",
+    en: "Bible",
+    icon: BookOpen,
+    hrefKo: "/search?q=요한복음 3:16",
+    hrefEn: "/search?q=John 3:16",
+  },
+  {
+    ko: "인물",
+    en: "People",
+    icon: User,
+    hrefKo: "/search?q=모세",
+    hrefEn: "/search?q=Moses",
+  },
+  {
+    ko: "사건",
+    en: "Events",
+    icon: CalendarDays,
+    hrefKo: "/search?q=출애굽",
+    hrefEn: "/search?q=Exodus",
+  },
+  {
+    ko: "장소",
+    en: "Places",
+    icon: MapPin,
+    hrefKo: "/search?q=예루살렘",
+    hrefEn: "/search?q=Jerusalem",
+  },
+  {
+    ko: "교리",
+    en: "Doctrine",
+    icon: GitBranch,
+    hrefKo: "/search?q=삼위일체",
+    hrefEn: "/search?q=Trinity",
+  },
+  { ko: "원어", en: "Lexicon", icon: Languages, hrefKo: "/study?strong=G0026", hrefEn: "/study?strong=G0026" },
+  {
+    ko: "교부",
+    en: "Fathers",
+    icon: Landmark,
+    hrefKo: "/search?q=어거스틴",
+    hrefEn: "/search?q=Augustine",
+  },
   {
     ko: "종교개혁",
     en: "Reformation",
     icon: Cross,
-    hrefKo: "/search?q=종교개혁",
-    hrefEn: "/search?q=reformation",
+    hrefKo: "/search?q=칼뱅",
+    hrefEn: "/search?q=Calvin",
   },
   {
     ko: "주석",
     en: "Commentary",
     icon: FileSearch,
-    hrefKo: "/search?q=주석",
-    hrefEn: "/search?q=commentary",
+    hrefKo: "/search?q=창세기 1:1",
+    hrefEn: "/search?q=Genesis 1:1",
   },
-  { ko: "논문", en: "Papers", icon: FileText, hrefKo: "/search?q=논문", hrefEn: "/search?q=papers" },
+  {
+    ko: "논문",
+    en: "Papers",
+    icon: FileText,
+    hrefKo: "/search?q=논문",
+    hrefEn: "/search?q=papers",
+  },
 ];
 
 function TopicCard({
@@ -136,6 +178,7 @@ export default function Home() {
   const [isSearching, setIsSearching] = useState(false);
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [feedLoading, setFeedLoading] = useState(true);
+  const [bootMsg, setBootMsg] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -152,6 +195,30 @@ export default function Home() {
       .finally(() => {
         if (!cancelled) setFeedLoading(false);
       });
+
+    fetch(`${API}/api/bootstrap/status`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (cancelled || !json) return;
+        const n = Number(json.verses_now || json.verses || 0);
+        if (json.running) {
+          setBootMsg(
+            lang === "KO"
+              ? `클라우드에 성경 본문 적재 중… (현재 ${n.toLocaleString()}절). 1~2분 후 새로고침 해주세요.`
+              : `Loading Bible text into the cloud DB… (${n.toLocaleString()} verses). Refresh in a minute.`
+          );
+        } else if (n < 1000) {
+          setBootMsg(
+            lang === "KO"
+              ? "본문 데이터가 아직 적습니다. 잠시 후 새로고침하거나 관리자에게 알려 주세요."
+              : "Bible data is still thin. Refresh shortly or contact the admin."
+          );
+        } else {
+          setBootMsg(null);
+        }
+      })
+      .catch(() => {});
+
     return () => {
       cancelled = true;
     };
@@ -316,6 +383,14 @@ export default function Home() {
           </div>
         </form>
       </section>
+
+      {bootMsg && (
+        <div className="max-w-6xl mx-auto px-4 md:px-6 pb-4">
+          <div className="rounded-xl border border-ark-brown/30 bg-[#FFF8EF] px-4 py-3 text-sm text-ark-navy leading-relaxed">
+            {bootMsg}
+          </div>
+        </div>
+      )}
 
       {/* Live trending feed — real data from DB */}
       <section className="max-w-6xl mx-auto px-4 md:px-6 pb-10 md:pb-14">

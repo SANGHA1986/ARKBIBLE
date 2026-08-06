@@ -83,6 +83,8 @@ def load_ko_pd() -> dict:
                 stats[action] = stats.get(action, 0) + 1
                 if action in ("insert", "update") and stats[action] % 500 == 0:
                     db.commit()
+                    _STATE["message"] = f"loading KO… {n}"
+                    _STATE["verses"] = n
             except Exception:
                 db.rollback()
                 stats["fail"] += 1

@@ -433,7 +433,7 @@ def trending_feed(lang: str = "KO", db: Session = Depends(get_db)):
             return source_type
         return "자료"
 
-    # 1) 인기 구절 — 34만건 xref GROUP BY 제거(첫 로딩 수 초). 고정 대표 구절만.
+  // 1) 인기 구절 — DB에 실제 본문 있는 것만 (클라우드 적재 중 빈 링크 방지)
     popular_refs = [
         ("요한복음", 3, 16),
         ("창세기", 1, 1),
@@ -441,16 +441,37 @@ def trending_feed(lang: str = "KO", db: Session = Depends(get_db)):
         ("로마서", 8, 28),
         ("마태복음", 5, 3),
         ("빌립보서", 4, 13),
+        ("출애굽기", 3, 14),
+        ("이사야", 53, 5),
     ]
     for book_name, ch, vs in popular_refs:
+        book = db.query(models.BibleBook).filter_by(name=book_name).first()
+        if not book:
+            continue
+        vrow = (
+            db.query(models.Verse)
+            .filter_by(book_id=book.id, chapter_num=ch, verse_num=vs)
+            .first()
+        )
+        if not vrow:
+            continue
+        ko = (vrow.text_ko or "").strip()
+        en_txt = (vrow.text_en or "").strip()
+        if ko.startswith("[공개"):
+            ko = ""
+        snippet = (ko or en_txt)[:60]
+        if not snippet:
+            continue
         b = book_display(book_name, lang)
         feed.append({
             "type": "verse",
             "title": f"{b} {ch}:{vs}",
-            "subtitle": "Featured" if en else "대표 구절",
+            "subtitle": snippet,
             "link": f"/search?q={b} {ch}:{vs}",
             "badge": "Hot" if en else "인기",
         })
+        if len([f for f in feed if f["type"] == "verse"]) >= 6:
+            break
 
     # 2) 인물
     top_chars = db.query(models.Character).order_by(models.Character.id).limit(6).all()
