@@ -391,6 +391,10 @@ def _category_browse_mode(query: str) -> Optional[str]:
         "journals": "papers",
         "주석": "commentary",
         "commentary": "commentary",
+        "자료": "sources",
+        "sources": "sources",
+        "materials": "sources",
+        "등록자료": "sources",
     }
     return mapping.get(q)
 
@@ -629,13 +633,31 @@ def _fill_category_browse(db, results: dict, mode: str, lang: str, msg: dict) ->
                 break
         results["materials"] = out
         results["message"] = (
-            "공개 주석·강해 자료 목록입니다. 특정 구절의 주석을 보려면 구절을 검색하세요. (예: 창세기 1:1)"
+            "주석『작품/책』목록입니다(전체 구절 해설 3만건이 아님). 구절별 주석은 구절을 열면 아래에 표시됩니다. 예: 창세기 1:1"
             if lang == "KO"
-            else "Public commentary list. For verse-linked notes, search a verse (e.g. Genesis 1:1)."
+            else "List of commentary works/books (not 30k verse notes). Open a verse to see its notes. e.g. Genesis 1:1"
         )
         if not results["materials"]:
             results["message"] = (
                 "등록된 주석 자료가 없습니다." if lang == "KO" else "No commentaries registered."
+            )
+    elif mode == "sources":
+        out = []
+        for src in db.query(models.Source).order_by(models.Source.id).limit(120).all():
+            if not _source_license_ok(src):
+                continue
+            out.append(_material_payload(src, lang=lang))
+            if len(out) >= 99:
+                break
+        results["materials"] = out
+        results["message"] = (
+            "등록 자료 전체 목록입니다. 논문·주석 작품·요약 시드가 포함됩니다. 「논문」「주석」버튼은 각각 해당 종류만 보여줍니다."
+            if lang == "KO"
+            else "All registered sources (papers, commentary works, summary seeds). Use Papers/Commentary for filtered lists."
+        )
+        if not results["materials"]:
+            results["message"] = (
+                "등록된 자료가 없습니다." if lang == "KO" else "No sources registered."
             )
     elif mode == "fathers":
         father_names = ("어거스틴", "아타나시우스", "크리소스톰", "제롬", "오리겐", "터툴리아누스")

@@ -216,17 +216,48 @@ function SearchInner() {
     refreshScrap();
   };
 
+  const loadVerseExtras = async (book: string, chapter: number, verse: number) => {
+    try {
+      const res = await fetch(
+        `${API}/api/bible/${encodeURIComponent(book)}/${chapter}/${verse}?lang=${encodeURIComponent(lang)}`
+      );
+      if (!res.ok) return;
+      const json = await res.json();
+      setVerseExtras({
+        commentaries: json.commentaries || [],
+        crossReferences: json.cross_references || [],
+      });
+      setExpandedComments(new Set());
+    } catch {
+      /* keep previous extras */
+    }
+  };
+
   const fetchVerse = async (book: string, chapter: number, verse: number) => {
+    const bookKey = book;
     const res = await fetch(
-      `${API}/api/bible/${book}/${chapter}/${verse}?lang=${encodeURIComponent(lang)}`
+      `${API}/api/bible/${encodeURIComponent(bookKey)}/${chapter}/${verse}?lang=${encodeURIComponent(lang)}`
     );
     if (!res.ok) throw new Error(lang === "KO" ? "구절 없음" : "Verse not found");
     const json = await res.json();
     setData(json);
     setTopic(null);
     setSelected(null);
+    setVerseExtras({
+      commentaries: json.commentaries || [],
+      crossReferences: json.cross_references || [],
+    });
+    setExpandedComments(new Set());
     if (json.interpretations?.length > 0) {
       setActiveTab(json.interpretations[0].viewpoint);
+    }
+  };
+
+  const selectVerseRow = async (v: any) => {
+    setSelected({ type: "verse_row", data: v });
+    const bookKey = v.book_ko || v.book;
+    if (bookKey && v.chapter != null && v.verse != null) {
+      await loadVerseExtras(bookKey, v.chapter, v.verse);
     }
   };
 
@@ -251,7 +282,8 @@ function SearchInner() {
           commentaries: json.commentaries || [],
           crossReferences: json.cross_references || [],
         });
-        await fetchVerse(json.verse.book, json.verse.chapter, json.verse.verse);
+        const bookKey = json.verse.book_ko || json.verse.book;
+        await fetchVerse(bookKey, json.verse.chapter, json.verse.verse);
         return;
       }
 
@@ -262,13 +294,13 @@ function SearchInner() {
         });
         setError(null);
         setTopic(json);
-        setSelected(
-          json.mode === "chapter" && json.verses?.length
-            ? { type: "chapter_all", data: json }
-            : json.verses?.[0]
-              ? { type: "verse_row", data: json.verses[0] }
-              : null
-        );
+        if (json.mode === "chapter" && json.verses?.length) {
+          setSelected({ type: "chapter_all", data: json });
+        } else if (json.verses?.[0]) {
+          await selectVerseRow(json.verses[0]);
+        } else {
+          setSelected(null);
+        }
         return;
       }
 
@@ -281,7 +313,7 @@ function SearchInner() {
       setTopic(json);
       setResultPage(1);
       const browse = json.browse as string | undefined;
-      if (browse === "commentary" || browse === "papers" || browse === "fathers") {
+      if (browse === "commentary" || browse === "papers" || browse === "fathers" || browse === "sources") {
         if (json.materials?.[0]) {
           setSelected({ type: "material", data: json.materials[0] });
         } else if (json.characters?.[0]) {
@@ -290,7 +322,7 @@ function SearchInner() {
           setSelected(null);
         }
       } else if (browse === "bible_hub" && json.verses?.[0]) {
-        setSelected({ type: "verse_row", data: json.verses[0] });
+        await selectVerseRow(json.verses[0]);
       } else if (json.characters?.[0]) {
         setSelected({ type: "character", data: json.characters[0] });
       } else if (json.events?.[0]) {
@@ -304,7 +336,7 @@ function SearchInner() {
       } else if (json.strong?.[0]) {
         setSelected({ type: "strong", data: json.strong[0] });
       } else if (json.verses?.[0]) {
-        setSelected({ type: "verse_row", data: json.verses[0] });
+        await selectVerseRow(json.verses[0]);
       } else {
         setSelected(null);
       }
@@ -614,7 +646,7 @@ function SearchInner() {
                           <button
                             key={i}
                             type="button"
-                            onClick={() => setSelected({ type: "verse_row", data: v })}
+                            onClick={() => selectVerseRow(v)}
                             className={`w-full text-left px-3 py-2 rounded-lg border transition-colors ${
                               active
                                 ? "border-ark-brown bg-ark-brown/5"
@@ -954,19 +986,26 @@ function SearchInner() {
                     <h3 className="font-bold text-sm">
                       {topic.browse === "commentary"
                         ? lang === "KO"
-                          ? "주석 자료"
-                          : "Commentaries"
+                          ? "주석 작품 목록"
+                          : "Commentary works"
                         : topic.browse === "papers"
                           ? lang === "KO"
                             ? "논문·학술지"
                             : "Papers / Journals"
-                          : t.materials}
+                          : topic.browse === "sources"
+                            ? lang === "KO"
+                              ? "등록 자료 전체"
+                              : "All sources"
+                            : t.materials}
                     </h3>
                     <span className="ml-auto text-[10px] text-ark-grey">
                       {topic.materials.length} · {t.pageOf} {resultPage}/{Math.max(1, Math.ceil(topic.materials.length / RESULTS_PER_PAGE))}
                     </span>
                   </div>
-                  {topic.message && (topic.browse === "commentary" || topic.browse === "papers") && (
+                  {topic.message &&
+                    (topic.browse === "commentary" ||
+                      topic.browse === "papers" ||
+                      topic.browse === "sources") && (
                     <p className="text-xs text-ark-grey mb-3 leading-relaxed">{topic.message}</p>
                   )}
                   <div className="space-y-2">
@@ -1125,19 +1164,43 @@ function SearchInner() {
                       </p>
                     </div>
                   )}
-                  <div>
-                    <div className="text-xs font-bold uppercase text-ark-grey">{t.textKo}</div>
-                    <p className="text-base font-serif mt-1 leading-relaxed">
-                      {displayKoText(selected.data.text_ko, lang)}
-                    </p>
-                  </div>
-                  {selected.data.text_en && (
-                    <div>
-                      <div className="text-xs font-bold uppercase text-ark-grey">{t.textEn}</div>
-                      <p className="text-base font-serif mt-1 leading-relaxed">
-                        {selected.data.text_en}
-                      </p>
-                    </div>
+                  {lang === "EN" ? (
+                    <>
+                      {selected.data.text_en && (
+                        <div>
+                          <div className="text-xs font-bold uppercase text-ark-grey">{t.textEn}</div>
+                          <p className="text-base font-serif mt-1 leading-relaxed">
+                            {selected.data.text_en}
+                          </p>
+                        </div>
+                      )}
+                      {selected.data.text_ko &&
+                        !String(selected.data.text_ko).startsWith("[공개") && (
+                          <div>
+                            <div className="text-xs font-bold uppercase text-ark-grey">{t.textKo}</div>
+                            <p className="text-base font-serif mt-1 leading-relaxed">
+                              {displayKoText(selected.data.text_ko, lang)}
+                            </p>
+                          </div>
+                        )}
+                    </>
+                  ) : (
+                    <>
+                      <div>
+                        <div className="text-xs font-bold uppercase text-ark-grey">{t.textKo}</div>
+                        <p className="text-base font-serif mt-1 leading-relaxed">
+                          {displayKoText(selected.data.text_ko, lang)}
+                        </p>
+                      </div>
+                      {selected.data.text_en && (
+                        <div>
+                          <div className="text-xs font-bold uppercase text-ark-grey">{t.textEn}</div>
+                          <p className="text-base font-serif mt-1 leading-relaxed">
+                            {selected.data.text_en}
+                          </p>
+                        </div>
+                      )}
+                    </>
                   )}
                   <div className="flex flex-wrap gap-2 pt-2">
                     <StarBtn
@@ -1160,7 +1223,7 @@ function SearchInner() {
                       type="button"
                       onClick={() =>
                         fetchVerse(
-                          selected.data.book,
+                          selected.data.book_ko || selected.data.book,
                           selected.data.chapter,
                           selected.data.verse
                         )
@@ -1190,6 +1253,88 @@ function SearchInner() {
                       {t.askAi}
                     </button>
                   </div>
+                  {!!verseExtras.commentaries?.length && (
+                    <div className="pt-4 border-t border-[#E8E2D9] space-y-3">
+                      <div className="flex items-center gap-2">
+                        <Library className="w-4 h-4 text-ark-brown" />
+                        <h3 className="font-serif font-bold text-base text-ark-navy">
+                          {lang === "KO" ? "이 구절 공개 주석" : "Commentaries for this verse"}
+                        </h3>
+                        <span className="text-[10px] text-ark-grey ml-auto">
+                          {verseExtras.commentaries.length}
+                          {lang === "KO" ? "건 · 영문 PD" : " · English PD"}
+                        </span>
+                      </div>
+                      {verseExtras.commentaries.map((c: any, idx: number) => {
+                        const isExpanded = expandedComments.has(idx);
+                        return (
+                          <div key={idx} className="p-3 bg-ark-bg rounded-lg border border-[#E8E2D9]">
+                            <div className="font-bold text-sm text-ark-brown">{c.author}</div>
+                            <div className="text-[10px] text-ark-grey mb-2">
+                              {c.title} · {c.license} · {c.passage_ref}
+                            </div>
+                            <p
+                              className={`text-xs text-ark-navy/85 leading-relaxed whitespace-pre-line ${
+                                isExpanded ? "" : "line-clamp-6"
+                              }`}
+                            >
+                              {c.text}
+                            </p>
+                            <div className="mt-2 flex flex-wrap gap-3">
+                              {c.text && c.text.length > 260 && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setExpandedComments((prev) => {
+                                      const next = new Set(prev);
+                                      if (next.has(idx)) next.delete(idx);
+                                      else next.add(idx);
+                                      return next;
+                                    })
+                                  }
+                                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-ark-brown hover:opacity-80"
+                                >
+                                  {isExpanded ? (
+                                    <>
+                                      <ChevronUp className="w-3.5 h-3.5" />
+                                      {lang === "KO" ? "접기" : "Collapse"}
+                                    </>
+                                  ) : (
+                                    <>
+                                      <ChevronDown className="w-3.5 h-3.5" />
+                                      {lang === "KO" ? "펼쳐보기" : "Show more"}
+                                    </>
+                                  )}
+                                </button>
+                              )}
+                              {lang === "KO" && c.text && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    askAiAbout(
+                                      `${c.author} 주석(${c.passage_ref})을 한국어로 짧게 요약해 주세요. 등록된 영문 PD/CC0 본문만 근거로 하고 추측하지 마세요.`,
+                                      `Author: ${c.author}\nTitle: ${c.title}\nLicense: ${c.license}\nPassage: ${c.passage_ref}\n\n${String(c.text).slice(0, 3500)}`
+                                    )
+                                  }
+                                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-ark-brown hover:opacity-80"
+                                >
+                                  <MessageSquare className="w-3.5 h-3.5" />
+                                  한국어 요약 요청
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {!verseExtras.commentaries?.length && selected.data.book_ko && (
+                    <p className="text-[11px] text-ark-grey pt-2">
+                      {lang === "KO"
+                        ? "이 구절에 연결된 공개 주석을 불러오는 중이거나, 아직 등록분이 없습니다."
+                        : "Loading verse commentaries, or none registered for this verse yet."}
+                    </p>
+                  )}
                 </div>
               )}
 

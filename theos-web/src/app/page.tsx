@@ -131,6 +131,13 @@ const CATEGORIES = [
     hrefKo: "/search?q=논문",
     hrefEn: "/search?q=papers",
   },
+  {
+    ko: "자료",
+    en: "Sources",
+    icon: Library,
+    hrefKo: "/search?q=자료",
+    hrefEn: "/search?q=Sources",
+  },
 ];
 
 function TopicCard({
@@ -207,8 +214,8 @@ export default function Home() {
         if (json.running) {
           setBootMsg(
             lang === "KO"
-              ? `테스트 데이터 적재 중… (${json.phase || ""} / 본문 ${verses.toLocaleString()} · 주석 ${commentaries.toLocaleString()} · 인물 ${characters} · 자료 ${sources}). 완료까지 새로고침해 주세요.`
-              : `Loading beta data… (${json.phase || ""} / verses ${verses.toLocaleString()}, commentaries ${commentaries.toLocaleString()}, people ${characters}, sources ${sources}). Refresh until done.`
+              ? `테스트 데이터 적재 중… (${json.phase || ""} / 성경본문 ${verses.toLocaleString()} · 구절주석조각 ${commentaries.toLocaleString()} · 인물 ${characters} · 등록자료 ${sources}). 완료까지 새로고침해 주세요.`
+              : `Loading beta data… (${json.phase || ""} / Bible verses ${verses.toLocaleString()}, verse-commentary rows ${commentaries.toLocaleString()}, people ${characters}, sources ${sources}). Refresh until done.`
           );
         } else if (verses < 30000 || commentaries < 500 || characters < 20) {
           setBootMsg(

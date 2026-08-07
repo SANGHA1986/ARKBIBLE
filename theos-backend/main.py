@@ -272,11 +272,15 @@ def get_verse_analysis(
     특정 성경 구절과 관련된 모든 지식 그래프(인물, 사건, 장소, 다중 해석)를 가져오는 메인 엔드포인트
     """
     from book_i18n import normalize_lang
+    from search_api import resolve_book_name
 
     lang = normalize_lang(lang)
     en = lang == "EN"
-    # 1. 구절 기본 정보 조회
-    book = db.query(models.BibleBook).filter(models.BibleBook.name == book_name).first()
+    # 1. 구절 기본 정보 조회 (영문 책명도 허용)
+    resolved = resolve_book_name(book_name) or book_name
+    book = db.query(models.BibleBook).filter(models.BibleBook.name == resolved).first()
+    if not book:
+        book = db.query(models.BibleBook).filter(models.BibleBook.name == book_name).first()
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
         
@@ -288,6 +292,10 @@ def get_verse_analysis(
     
     if not verse_obj:
         raise HTTPException(status_code=404, detail="Verse not found")
+
+    from book_i18n import char_display, verse_ref_display
+    from kg_i18n import event_name
+    from search_api import _fetch_commentaries, _fetch_cross_refs
 
     # 같은 장 전후 구절 + 그래프 연결 구절
     related = []
@@ -301,43 +309,62 @@ def get_verse_analysis(
         .order_by(models.Verse.verse_num)
         .all()
     )
+    reason_same = "Same chapter" if en else "같은 장"
+    self_ref = verse_ref_display(book.name, chapter, verse, lang)
     for nv in same_chapter:
         if abs(nv.verse_num - verse) <= 3:
             related.append(
                 {
-                    "reference": f"{book.name} {nv.chapter_num}:{nv.verse_num}",
-                    "snippet": (nv.text_ko if nv.text_ko and not nv.text_ko.startswith("[공개") else (nv.text_en or ""))[:120],
-                    "reason": "같은 장",
+                    "reference": verse_ref_display(book.name, nv.chapter_num, nv.verse_num, lang),
+                    "snippet": (
+                        (nv.text_en or "")[:120]
+                        if en
+                        else (
+                            nv.text_ko
+                            if nv.text_ko and not nv.text_ko.startswith("[공개")
+                            else (nv.text_en or "")
+                        )[:120]
+                    ),
+                    "reason": reason_same,
                 }
             )
 
     seen_refs = {r["reference"] for r in related}
     for char in verse_obj.characters:
+        cname = char_display(char.name, lang)
         for v in char.verses[:6]:
-            ref = f"{v.book.name} {v.chapter_num}:{v.verse_num}"
-            if ref == f"{book.name} {chapter}:{verse}" or ref in seen_refs:
+            ref = verse_ref_display(v.book.name, v.chapter_num, v.verse_num, lang)
+            if ref == self_ref or ref in seen_refs:
                 continue
             related.append(
                 {
                     "reference": ref,
-                    "snippet": (v.text_ko or v.text_en or "")[:120],
-                    "reason": f"인물 연결 · {char.name}",
+                    "snippet": ((v.text_en if en else (v.text_ko or v.text_en)) or "")[:120],
+                    "reason": (
+                        f"Linked person · {cname}" if en else f"인물 연결 · {cname}"
+                    ),
                 }
             )
             seen_refs.add(ref)
     for ev in verse_obj.events:
+        ename = event_name(ev.name, lang)
         for v in ev.verses[:6]:
-            ref = f"{v.book.name} {v.chapter_num}:{v.verse_num}"
-            if ref == f"{book.name} {chapter}:{verse}" or ref in seen_refs:
+            ref = verse_ref_display(v.book.name, v.chapter_num, v.verse_num, lang)
+            if ref == self_ref or ref in seen_refs:
                 continue
             related.append(
                 {
                     "reference": ref,
-                    "snippet": (v.text_ko or v.text_en or "")[:120],
-                    "reason": f"사건 연결 · {ev.name}",
+                    "snippet": ((v.text_en if en else (v.text_ko or v.text_en)) or "")[:120],
+                    "reason": (
+                        f"Linked event · {ename}" if en else f"사건 연결 · {ename}"
+                    ),
                 }
             )
             seen_refs.add(ref)
+
+    commentaries = _fetch_commentaries(db, book, chapter, verse)
+    cross_references = _fetch_cross_refs(db, book, chapter, verse, lang=lang)
 
     materials = []
     for i in verse_obj.interpretations:
@@ -387,7 +414,11 @@ def get_verse_analysis(
         )
     # 2. 관련 데이터 취합 (SQLAlchemy ORM Relationships 활용)
     return {
-        "reference": f"{book.name} {chapter}:{verse}",
+        "reference": verse_ref_display(book.name, chapter, verse, lang),
+        "book": book.name,
+        "book_ko": book.name,
+        "chapter": chapter,
+        "verse": verse,
         "original_text": verse_obj.text_original,
         "translated_text": verse_obj.text_ko,
         "text_en": verse_obj.text_en,
@@ -396,11 +427,21 @@ def get_verse_analysis(
         "translation_ko": translation_ko,
         "translation_note": translation_note,
         "related_verses": related[:16],
-        "related_characters": [{"name": c.name, "era": c.era} for c in verse_obj.characters],
-        "related_events": [{"name": e.name, "historical_background": e.historical_background} for e in verse_obj.events],
+        "related_characters": [
+            {"name": char_display(c.name, lang), "era": c.era} for c in verse_obj.characters
+        ],
+        "related_events": [
+            {
+                "name": event_name(e.name, lang),
+                "historical_background": e.historical_background,
+            }
+            for e in verse_obj.events
+        ],
         "related_concepts": [{"name": cp.name, "definition": cp.definition} for cp in verse_obj.concepts],
         "language_data": [{"word": l.word, "transliteration": l.transliteration, "morphology": l.morphology} for l in verse_obj.language_data],
         "materials": materials,
+        "commentaries": commentaries,
+        "cross_references": cross_references,
         "interpretations": [
             {
                 "viewpoint": i.viewpoint,
