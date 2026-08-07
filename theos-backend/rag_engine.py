@@ -916,11 +916,213 @@ class RagEngine:
 
         return results[:limit]
 
+    def _strip_lexicon_html(self, text: str) -> str:
+        t = re.sub(r"<[^>]+>", " ", text or "")
+        t = re.sub(r"\s+", " ", t).strip()
+        return t
+
+    def _ko_meaning_from_en_gloss(self, gloss: str, definition: str = "") -> str:
+        """공개 영문 Strong gloss → 한국어 뜻 (정식 사전 복제 아님, 요약 풀어쓰기)."""
+        blob = f"{gloss or ''} {definition or ''}".lower()
+        pairs = [
+            ("exceeding joy", "넘치는 기쁨, 크게 기뻐함"),
+            ("exuberant joy", "넘치는 기쁨, 환희"),
+            ("exultation", "환희, 크게 기뻐 날뜀"),
+            ("gladness", "기쁨, 즐거움"),
+            ("rejoice", "기뻐하다"),
+            ("charity", "사랑(아가페적 사랑)"),
+            ("beloved", "사랑하는 이"),
+            ("welcome", "환영, 기뻐 맞이함"),
+            ("joy", "기쁨"),
+            ("love", "사랑"),
+            ("faith", "믿음"),
+            ("hope", "소망"),
+            ("grace", "은혜"),
+            ("peace", "평안, 평화"),
+            ("mercy", "긍휼, 자비"),
+            ("truth", "진리"),
+            ("spirit", "영, 성령"),
+            ("holy", "거룩한"),
+            ("sin", "죄"),
+            ("salvation", "구원"),
+            ("righteousness", "의"),
+            ("glory", "영광"),
+            ("power", "능력, 권능"),
+            ("wisdom", "지혜"),
+            ("word", "말씀"),
+            ("lord", "주, 주님"),
+            ("god", "하나님"),
+            ("kingdom", "나라, 왕국"),
+            ("gospel", "복음"),
+            ("church", "교회"),
+            ("covenant", "언약"),
+            ("pray", "기도하다"),
+            ("prayer", "기도"),
+            ("repent", "회개하다"),
+            ("forgive", "용서하다"),
+            ("bless", "축복하다"),
+            ("praise", "찬양"),
+            ("worship", "예배, 경배"),
+            ("believe", "믿다"),
+            ("save", "구원하다"),
+            ("life", "생명"),
+            ("death", "죽음"),
+            ("light", "빛"),
+            ("world", "세상"),
+            ("heaven", "하늘"),
+            ("earth", "땅"),
+            ("heart", "마음"),
+            ("soul", "영혼"),
+            ("flesh", "육체"),
+            ("blood", "피"),
+            ("cross", "십자가"),
+            ("baptism", "세례"),
+            ("apostle", "사도"),
+            ("prophet", "선지자"),
+            ("angel", "천사"),
+            ("servant", "종"),
+            ("disciple", "제자"),
+            ("fear", "경외, 두려움"),
+            ("wrath", "진노"),
+            ("comfort", "위로"),
+            ("affliction", "환난, 고난"),
+            ("temptation", "시험"),
+            ("miracle", "기적"),
+            ("eternal", "영원한"),
+            ("everlasting", "영원한"),
+            ("beginning", "시작, 태초"),
+            ("create", "창조하다"),
+            ("redeem", "속량하다"),
+            ("sanctify", "거룩하게 하다"),
+            ("justify", "의롭다 하다"),
+            ("testify", "증언하다"),
+            ("proclaim", "선포하다"),
+            ("preach", "전파하다"),
+            ("know", "알다"),
+            ("hear", "듣다"),
+            ("see", "보다"),
+            ("come", "오다"),
+            ("give", "주다"),
+            ("call", "부르다"),
+            ("send", "보내다"),
+            ("follow", "따르다"),
+            ("serve", "섬기다"),
+            ("abide", "거하다"),
+            ("reveal", "계시하다"),
+            ("fulfill", "성취하다"),
+            ("judge", "심판하다"),
+            ("teach", "가르치다"),
+            ("good", "선한, 좋은"),
+            ("evil", "악한"),
+            ("true", "참된"),
+            ("false", "거짓된"),
+            ("humble", "겸손한"),
+            ("proud", "교만한"),
+            ("wise", "지혜로운"),
+            ("foolish", "어리석은"),
+            ("pure", "깨끗한"),
+            ("perfect", "완전한"),
+            ("great", "큰"),
+            ("small", "작은"),
+            ("first", "첫째"),
+            ("last", "마지막"),
+            ("new", "새"),
+            ("old", "옛"),
+            ("man", "사람"),
+            ("woman", "여자"),
+            ("son", "아들"),
+            ("father", "아버지"),
+            ("mother", "어머니"),
+            ("brother", "형제"),
+            ("sister", "자매"),
+            ("people", "백성"),
+            ("nation", "민족"),
+            ("city", "성읍"),
+            ("house", "집"),
+            ("temple", "성전"),
+            ("altar", "제단"),
+            ("sacrifice", "제사, 희생"),
+            ("lamb", "어린양"),
+            ("shepherd", "목자"),
+            ("sheep", "양"),
+            ("bread", "떡"),
+            ("water", "물"),
+            ("wine", "포도주"),
+            ("day", "날"),
+            ("night", "밤"),
+            ("name", "이름"),
+            ("way", "길"),
+            ("voice", "음성"),
+            ("hand", "손"),
+            ("eye", "눈"),
+            ("ear", "귀"),
+            ("body", "몸"),
+            ("strength", "힘"),
+            ("rest", "안식"),
+            ("promise", "약속"),
+            ("law", "율법"),
+            ("commandment", "계명"),
+            ("witness", "증인, 증언"),
+            ("king", "왕"),
+            ("priest", "제사장"),
+            ("feast", "잔치, 절기"),
+            ("sabbath", "안식일"),
+            ("time", "때"),
+            ("age", "시대"),
+            ("generation", "세대"),
+        ]
+        hits = []
+        seen = set()
+        for en_w, ko_w in pairs:
+            if en_w in blob and ko_w not in seen:
+                hits.append(ko_w)
+                seen.add(ko_w)
+            if len(hits) >= 4:
+                break
+        if hits:
+            return ", ".join(hits)
+        g = (gloss or definition or "").strip()
+        if not g:
+            return "등록된 한국어 정식 뜻풀이는 없고, 영문 공개 사전 정의만 있습니다"
+        return f"「{g[:90]}」— 영문 공개 사전 요지를 위 문맥으로 이해"
+
+    def _strong_lexicon_system_prompt(self, lang: str = "KO") -> str:
+        from book_i18n import normalize_lang
+        if normalize_lang(lang) == "EN":
+            return (
+                "You explain Strong's / STEP lexicon entries for pastors. "
+                "Use ONLY the provided lexicon blocks. Plain text, no markdown. "
+                "Sections: 1. Verified Facts 2. Traditional Interpretations "
+                "3. Scholarly Views 4. Further Research. "
+                "Start with the English meaning in one clear sentence."
+            )
+        return (
+            "당신은 목회자·신학생을 돕는 원어 안내자입니다. "
+            "제공된 Strong's/STEP 영문 사전 블록만 근거로 쓰십시오. "
+            "평문만 쓰고 마크다운(# ** >)은 금지합니다. "
+            "섹션 제목 고정:\n"
+            "1. 확인된 사실\n"
+            "2. 전통적 해석\n"
+            "3. 학계 다양한 견해\n"
+            "4. 추가 연구\n"
+            "필수:\n"
+            "- 1번 맨 앞에 「한국어 뜻: …」한 줄을 먼저 쓰십시오. "
+            "예: 한국어 뜻: 크게 기뻐함, 환희 (기뻐 날뛰는 기쁨).\n"
+            "- 이어서 Strong 번호, 원어 표기, 음역을 짧게.\n"
+            "- 그다음 영문 gloss/definition을 「영문 근거」로 한두 줄만.\n"
+            "- STEP HTML 태그는 제거하고 핵심 뜻만.\n"
+            "- 교단 교의·설교 적용을 지어내지 마십시오.\n"
+            "- 2번은 「사전 정의 수준이며, 교의 해석은 주석을 보라」정도.\n"
+            "- 3번은 Strong's(1890) 고전 참고 / 현대 사전과 다를 수 있음.\n"
+            "- 4번은 /study?strong=번호 안내.\n"
+            "- 답변 전체는 한국어."
+        )
+
     def build_strong_answer(self, db: Session, query: str, entries, lang: str = "KO"):
         from book_i18n import normalize_lang
         en = normalize_lang(lang) == "EN"
         citations = []
-        parts = []
+        blocks = []
         for e in entries:
             src = e.source
             if src:
@@ -934,29 +1136,22 @@ class RagEngine:
                 .limit(2)
                 .all()
             )
-            exp_txt = ""
+            exp_plain = []
             for ex in expansions:
                 if ex.source:
                     citations.append(self._citation_from_registry(ex.source))
-                exp_txt += f"\n- [{ex.lexicon_name}] {(ex.entry_text or '')[:400]}"
-            if en:
-                parts.append(
-                    f"{e.strong_number} {e.lemma or ''} ({e.transliteration or ''})\n"
-                    f"gloss: {e.gloss or e.definition_short or '—'}\n"
-                    f"definition: {(e.definition_full or '')[:500]}\n"
-                    f"root: {e.root_word or '—'}"
-                    f"{exp_txt}"
+                exp_plain.append(
+                    f"[{ex.lexicon_name}] {self._strip_lexicon_html(ex.entry_text)[:500]}"
                 )
-            else:
-                parts.append(
-                    f"{e.strong_number} {e.lemma or ''} ({e.transliteration or ''})\n"
-                    f"요약: {e.gloss or e.definition_short or '—'}\n"
-                    f"정의: {(e.definition_full or '')[:500]}\n"
-                    f"어원: {e.root_word or '—'}"
-                    f"{exp_txt}"
-                )
+            blocks.append(
+                {
+                    "e": e,
+                    "exp": exp_plain,
+                    "gloss": (e.gloss or e.definition_short or "").strip(),
+                    "definition": (e.definition_full or "").strip(),
+                }
+            )
 
-        # 중복 citation 제거
         seen = set()
         unique = []
         for c in citations:
@@ -964,6 +1159,103 @@ class RagEngine:
             if key not in seen:
                 seen.add(key)
                 unique.append(c)
+
+        # LLM으로 한국어 뜻 우선 설명 시도
+        ctx_lines = []
+        for b in blocks:
+            e = b["e"]
+            ctx_lines.append(
+                f"[Strong {e.strong_number}]\n"
+                f"lemma={e.lemma or '—'}\n"
+                f"transliteration={e.transliteration or '—'}\n"
+                f"gloss_en={b['gloss'] or '—'}\n"
+                f"definition_en={(b['definition'] or '')[:600] or '—'}\n"
+                f"root={e.root_word or '—'}\n"
+                + ("\n".join(b["exp"]) if b["exp"] else "")
+            )
+        ctx = "\n\n".join(ctx_lines)
+        llm_answer = None
+        if not en:
+            # 원어 전용 시스템 프롬프트로 호출
+            load_env()
+            api_key = os.environ.get("OPENROUTER_API_KEY")
+            if api_key:
+                try:
+                    model_name = os.environ.get("RAG_MODEL", "deepseek/deepseek-v4-flash")
+                    response = requests.post(
+                        "https://openrouter.ai/api/v1/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {api_key}",
+                            "Content-Type": "application/json",
+                            "HTTP-Referer": "http://localhost:3000",
+                            "X-Title": "ARK",
+                        },
+                        json={
+                            "model": model_name,
+                            "messages": [
+                                {"role": "system", "content": self._strong_lexicon_system_prompt(lang)},
+                                {
+                                    "role": "user",
+                                    "content": (
+                                        f"사용자 질문: {query}\n\n"
+                                        f"[등록 원어 사전 블록]\n{ctx}\n\n"
+                                        "한국어 뜻을 맨 앞에 두고 설명해 주십시오."
+                                    ),
+                                },
+                            ],
+                            "temperature": 0.1,
+                        },
+                        timeout=45,
+                    )
+                    if response.status_code == 200:
+                        choices = (response.json() or {}).get("choices") or []
+                        if choices:
+                            text = (choices[0].get("message") or {}).get("content") or ""
+                            llm_answer = strip_answer_markdown(text) or None
+                except Exception:
+                    llm_answer = None
+
+        if llm_answer and ("한국어 뜻" in llm_answer or len(llm_answer) > 80):
+            return {
+                "query": query,
+                "answer": llm_answer,
+                "difficulty_level": "Easy",
+                "source_citations": unique,
+                "cached": False,
+                "reliability": {
+                    "citation_count": len(unique),
+                    "source_reliability": "A",
+                    "is_controversial": False,
+                    "confidence_score": 0.93,
+                },
+            }
+
+        # LLM 없거나 실패 → 한국어 뜻 먼저 고정 템플릿
+        parts = []
+        for b in blocks:
+            e = b["e"]
+            if en:
+                parts.append(
+                    f"{e.strong_number} {e.lemma or ''} ({e.transliteration or ''})\n"
+                    f"gloss: {b['gloss'] or '—'}\n"
+                    f"definition: {(b['definition'] or '')[:500]}\n"
+                    f"root: {e.root_word or '—'}\n"
+                    + ("\n".join(b["exp"]) if b["exp"] else "")
+                )
+            else:
+                ko = self._ko_meaning_from_en_gloss(b["gloss"], b["definition"])
+                parts.append(
+                    f"한국어 뜻: {ko}\n"
+                    f"원어: {e.strong_number} {e.lemma or ''} ({e.transliteration or ''})\n"
+                    f"영문 근거(Strong's): {b['gloss'] or b['definition'][:120] or '—'}\n"
+                    f"정의(영문): {(b['definition'] or '')[:300]}\n"
+                    f"어원: {e.root_word or '—'}\n"
+                    + (
+                        "확장(STEP, 요약): " + self._strip_lexicon_html(b["exp"][0])[:280]
+                        if b["exp"]
+                        else ""
+                    )
+                )
 
         if en:
             answer = (
@@ -980,12 +1272,13 @@ class RagEngine:
         else:
             answer = (
                 plain_section("1. 확인된 사실")
-                + "공개 라이선스 원어 사전(Strong's / STEP)에서 확인된 항목입니다.\n\n"
+                + "공개 영문 원어 사전(Strong's / STEP)을 한국어로 풀어 안내합니다. "
+                "한국어 정식 원어사전 복제가 아닙니다.\n\n"
                 + "\n\n".join(parts)
                 + plain_section("2. 전통적 해석")
-                + "사전 정의이며, 교단별 교의 해석은 별도 주석 자료를 참고하십시오.\n"
+                + "위는 사전 뜻풀이 수준입니다. 교단별 교의·설교 적용은 주석 자료를 참고하십시오.\n"
                 + plain_section("3. 학계 다양한 견해")
-                + "Strong's(1890)는 고전 참고용이며, 현대 사전과 다를 수 있습니다.\n"
+                + "Strong's(1890)는 고전 참고용이며, 현대 사전(BDAG 등)과 다를 수 있습니다.\n"
                 + plain_section("4. 추가 연구")
                 + f"원어 상세: /study?strong={entries[0].strong_number}\n"
             )
@@ -999,7 +1292,7 @@ class RagEngine:
                 "citation_count": len(unique),
                 "source_reliability": "A",
                 "is_controversial": False,
-                "confidence_score": 0.95,
+                "confidence_score": 0.92,
             },
         }
 
