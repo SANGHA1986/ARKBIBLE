@@ -1705,9 +1705,11 @@ class RagEngine:
                 for bad in (
                     "기록이 없습니다",
                     "등록된 자료가 없",
+                    "등록되지 않았습니다",
                     "No matching records",
                     "등록되어 있지 않습니다",
                     "확인할 수 없습니다",
+                    "서술할 수 없습니다",
                 )
             ):
                 continue
