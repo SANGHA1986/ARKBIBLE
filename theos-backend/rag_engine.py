@@ -1645,6 +1645,15 @@ class RagEngine:
         # 매번 .env 재확인 (서버가 키 없이 떠 있어도 이후 로드 가능)
         load_env()
 
+        # ★ Strong 번호 질문이 최우선 — 캐시/LLM보다 먼저 원어 답변
+        if self._wants_strong_lookup(query):
+            early_strong = self.lookup_strong_entries(db, query, limit=3)
+            if early_strong and (
+                re.search(r"\b[GgHh]\s*0*\d{1,5}\b", query)
+                or any(w in query.lower() for w in ["원어", "strong", "lexicon", "아가페", "agape"])
+            ):
+                return self.build_strong_answer(db, query, early_strong, lang=lang)
+
         # ★ 설명/해석 요청 → 항상 DB 등록분만 (LLM 경로 사용 안 함)
         if self._wants_explain(query):
             return self.build_explain_from_db(db, query, lang=lang)
@@ -1689,6 +1698,18 @@ class RagEngine:
         for c in caches:
             ans = c.answer or ""
             if "API 키" in ans or "LLM 확장 답변은 비활성" in ans or "가져올 수 없" in ans:
+                continue
+            # 빈 DB 시절 캐시(원어 없다고 한 답)는 재사용 금지
+            if any(
+                bad in ans
+                for bad in (
+                    "기록이 없습니다",
+                    "등록된 자료가 없",
+                    "No matching records",
+                    "등록되어 있지 않습니다",
+                    "확인할 수 없습니다",
+                )
+            ):
                 continue
             hangul = len(re.findall(r"[가-힣]", ans))
             latin = len(re.findall(r"[A-Za-z]", ans))
