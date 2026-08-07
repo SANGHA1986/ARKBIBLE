@@ -492,17 +492,25 @@ def _collect_materials(db, query: str, x_terms, tokens, limit: int = 24, lang: s
 
 def _fill_category_browse(db, results: dict, mode: str, lang: str, msg: dict) -> None:
     """홈 카테고리 클릭 시 DB 목록을 직접 채움."""
-    from book_i18n import char_display, verse_ref_display
+    from book_i18n import char_display
+    from kg_i18n import (
+        char_info,
+        concept_definition,
+        concept_name,
+        era_text,
+        event_background,
+        event_name,
+        location_name,
+    )
 
     if mode == "characters":
-        # 목록은 메타만 (verses lazy-load N+1 방지). 상세 클릭 시 개별 검색으로 충분.
         for char in db.query(models.Character).order_by(models.Character.id).limit(200).all():
             results["characters"].append(
                 {
                     "name": char_display(char.name, lang),
                     "original_name": char.original_name,
-                    "era": char.era,
-                    "info": char.genealogy_info,
+                    "era": era_text(char.era, lang),
+                    "info": char_info(char.name, char.genealogy_info, lang),
                     "verses": [],
                     "events": [],
                 }
@@ -515,9 +523,9 @@ def _fill_category_browse(db, results: dict, mode: str, lang: str, msg: dict) ->
         for ev in db.query(models.Event).order_by(models.Event.id).limit(200).all():
             results["events"].append(
                 {
-                    "name": ev.name,
-                    "period": ev.period,
-                    "background": ev.historical_background,
+                    "name": event_name(ev.name, lang),
+                    "period": era_text(ev.period, lang),
+                    "background": event_background(ev.name, ev.historical_background, lang),
                     "characters": [],
                     "locations": [],
                     "verses": [],
@@ -531,7 +539,7 @@ def _fill_category_browse(db, results: dict, mode: str, lang: str, msg: dict) ->
         for loc in db.query(models.Location).order_by(models.Location.id).limit(200).all():
             results["locations"].append(
                 {
-                    "name": loc.name,
+                    "name": location_name(loc.name, lang),
                     "ancient_name": loc.ancient_name,
                     "verses": [],
                     "events": [],
@@ -549,8 +557,8 @@ def _fill_category_browse(db, results: dict, mode: str, lang: str, msg: dict) ->
             seen.add(cp.name)
             results["concepts"].append(
                 {
-                    "name": cp.name,
-                    "definition": cp.definition,
+                    "name": concept_name(cp.name, lang),
+                    "definition": concept_definition(cp.name, cp.definition, lang),
                     "verses": [],
                 }
             )
@@ -559,8 +567,8 @@ def _fill_category_browse(db, results: dict, mode: str, lang: str, msg: dict) ->
                 continue
             results["concepts"].append(
                 {
-                    "name": d.name,
-                    "definition": d.description,
+                    "name": concept_name(d.name, lang),
+                    "definition": concept_definition(d.name, d.description, lang),
                     "verses": [],
                 }
             )
@@ -638,10 +646,10 @@ def _fill_category_browse(db, results: dict, mode: str, lang: str, msg: dict) ->
         ):
             results["characters"].append(
                 {
-                    "name": ch.name,
+                    "name": char_display(ch.name, lang),
                     "original_name": ch.original_name,
-                    "era": ch.era,
-                    "info": ch.genealogy_info,
+                    "era": era_text(ch.era, lang),
+                    "info": char_info(ch.name, ch.genealogy_info, lang),
                     "verses": [],
                 }
             )
@@ -657,10 +665,10 @@ def _fill_category_browse(db, results: dict, mode: str, lang: str, msg: dict) ->
         ):
             results["characters"].append(
                 {
-                    "name": ch.name,
+                    "name": char_display(ch.name, lang),
                     "original_name": ch.original_name,
-                    "era": ch.era,
-                    "info": ch.genealogy_info,
+                    "era": era_text(ch.era, lang),
+                    "info": char_info(ch.name, ch.genealogy_info, lang),
                     "verses": [],
                 }
             )
@@ -672,9 +680,9 @@ def _fill_category_browse(db, results: dict, mode: str, lang: str, msg: dict) ->
         ):
             results["events"].append(
                 {
-                    "name": ev.name,
-                    "period": ev.period,
-                    "background": ev.historical_background,
+                    "name": event_name(ev.name, lang),
+                    "period": era_text(ev.period, lang),
+                    "background": event_background(ev.name, ev.historical_background, lang),
                     "verses": [],
                 }
             )
@@ -882,6 +890,15 @@ def unified_search(q: str, username: str = "free_user", db: Session = None, lang
         return False
 
     matched_entity_ids = set()
+    from kg_i18n import (
+        char_info,
+        concept_definition,
+        concept_name,
+        era_text,
+        event_background,
+        event_name,
+        location_name,
+    )
     for char in db.query(models.Character).all():
         en_alias = KO_TO_EN_CHAR.get(char.name, "")
         if (
@@ -899,13 +916,13 @@ def unified_search(q: str, username: str = "free_user", db: Session = None, lang
                 {
                     "name": char_display(char.name, lang),
                     "original_name": char.original_name,
-                    "era": char.era,
-                    "info": char.genealogy_info,
+                    "era": era_text(char.era, lang),
+                    "info": char_info(char.name, char.genealogy_info, lang),
                     "verses": [
                         verse_ref_display(v.book.name, v.chapter_num, v.verse_num, lang)
                         for v in char.verses[:20]
                     ],
-                    "events": [e.name for e in char.events[:8]],
+                    "events": [event_name(e.name, lang) for e in char.events[:8]],
                 }
             )
             for v in char.verses[:20]:
@@ -918,9 +935,9 @@ def unified_search(q: str, username: str = "free_user", db: Session = None, lang
         if _term_hit(ev.name) or any(t in ev.name for t in tokens if len(t) >= 2):
             results["events"].append(
                 {
-                    "name": ev.name,
-                    "period": ev.period,
-                    "background": ev.historical_background,
+                    "name": event_name(ev.name, lang),
+                    "period": era_text(ev.period, lang),
+                    "background": event_background(ev.name, ev.historical_background, lang),
                     "verses": [
                         verse_ref_display(v.book.name, v.chapter_num, v.verse_num, lang)
                         for v in ev.verses[:8]
@@ -928,7 +945,7 @@ def unified_search(q: str, username: str = "free_user", db: Session = None, lang
                     "characters": [
                         char_display(c.name, lang) for c in ev.characters[:8]
                     ],
-                    "locations": [loc.name for loc in ev.locations[:8]],
+                    "locations": [location_name(loc.name, lang) for loc in ev.locations[:8]],
                     "source_note": (
                         "Registered DB record"
                         if normalize_lang(lang) == "EN"
@@ -946,7 +963,7 @@ def unified_search(q: str, username: str = "free_user", db: Session = None, lang
         if _term_hit(loc.name) or (loc.ancient_name and _term_hit(loc.ancient_name)):
             results["locations"].append(
                 {
-                    "name": loc.name,
+                    "name": location_name(loc.name, lang),
                     "ancient_name": loc.ancient_name,
                     "verses": [
                         verse_ref_display(v.book.name, v.chapter_num, v.verse_num, lang)
@@ -964,8 +981,8 @@ def unified_search(q: str, username: str = "free_user", db: Session = None, lang
         if _term_hit(cp.name) or cp.name in query:
             results["concepts"].append(
                 {
-                    "name": cp.name,
-                    "definition": cp.definition,
+                    "name": concept_name(cp.name, lang),
+                    "definition": concept_definition(cp.name, cp.definition, lang),
                     "verses": [
                         verse_ref_display(v.book.name, v.chapter_num, v.verse_num, lang)
                         for v in cp.verses[:8]

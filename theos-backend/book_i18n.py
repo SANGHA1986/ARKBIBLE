@@ -32,6 +32,12 @@ KO_TO_EN_CHAR = {
     "예수": "Jesus", "바울": "Paul", "베드로": "Peter", "요한": "John",
     "사울": "Saul", "엘리야": "Elijah", "엘리사": "Elisha", "야곱": "Jacob", "요셉": "Joseph",
 }
+try:
+    from kg_i18n import KO_TO_EN_CHAR as _KG_CHARS
+
+    KO_TO_EN_CHAR = {**KO_TO_EN_CHAR, **_KG_CHARS}
+except Exception:
+    pass
 EN_TO_KO_CHAR = {v: k for k, v in KO_TO_EN_CHAR.items()}
 
 
@@ -47,7 +53,12 @@ def book_display(ko_name: str, lang: str = "KO") -> str:
 
 def char_display(ko_name: str, lang: str = "KO") -> str:
     if normalize_lang(lang) == "EN":
-        return KO_TO_EN_CHAR.get(ko_name, ko_name)
+        try:
+            from kg_i18n import char_name
+
+            return char_name(ko_name, lang)
+        except Exception:
+            return KO_TO_EN_CHAR.get(ko_name, ko_name)
     return ko_name
 
 
