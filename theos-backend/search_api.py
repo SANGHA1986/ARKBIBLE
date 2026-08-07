@@ -511,11 +511,23 @@ def _fill_category_browse(db, results: dict, mode: str, lang: str, msg: dict) ->
                 else "No places registered yet (planned)."
             )
     elif mode == "concepts":
+        seen = set()
         for cp in db.query(models.Concept).order_by(models.Concept.id).limit(200).all():
+            seen.add(cp.name)
             results["concepts"].append(
                 {
                     "name": cp.name,
                     "definition": cp.definition,
+                    "verses": [],
+                }
+            )
+        for d in db.query(models.Doctrine).order_by(models.Doctrine.id).limit(100).all():
+            if d.name in seen:
+                continue
+            results["concepts"].append(
+                {
+                    "name": d.name,
+                    "definition": d.description,
                     "verses": [],
                 }
             )
@@ -532,12 +544,56 @@ def _fill_category_browse(db, results: dict, mode: str, lang: str, msg: dict) ->
     elif mode == "commentary":
         results["materials"] = _collect_materials(db, "주석", ["commentary", "주석"], [], limit=40)
     elif mode == "fathers":
+        father_names = ("어거스틴", "아타나시우스", "크리소스톰", "제롬", "오리겐", "터툴리아누스")
+        for ch in (
+            db.query(models.Character)
+            .filter(models.Character.name.in_(father_names))
+            .all()
+        ):
+            results["characters"].append(
+                {
+                    "name": ch.name,
+                    "original_name": ch.original_name,
+                    "era": ch.era,
+                    "info": ch.genealogy_info,
+                    "verses": [],
+                }
+            )
         results["materials"] = _collect_materials(
-            db, "교부", ["교부", "patristic", "fathers", "chrysostom"], [], limit=40
+            db, "교부", ["교부", "patristic", "fathers", "chrysostom", "augustine"], [], limit=40
         )
     elif mode == "reformation":
+        reform_names = ("루터", "칼뱅", "츠빙글리", "멜란히톤", "녹스")
+        for ch in (
+            db.query(models.Character)
+            .filter(models.Character.name.in_(reform_names))
+            .all()
+        ):
+            results["characters"].append(
+                {
+                    "name": ch.name,
+                    "original_name": ch.original_name,
+                    "era": ch.era,
+                    "info": ch.genealogy_info,
+                    "verses": [],
+                }
+            )
+        for ev in (
+            db.query(models.Event)
+            .filter(models.Event.name.contains("종교개혁"))
+            .limit(5)
+            .all()
+        ):
+            results["events"].append(
+                {
+                    "name": ev.name,
+                    "period": ev.period,
+                    "background": ev.historical_background,
+                    "verses": [],
+                }
+            )
         results["materials"] = _collect_materials(
-            db, "칼뱅", ["calvin", "institutes", "reformation", "종교개혁"], [], limit=40
+            db, "칼뱅", ["calvin", "institutes", "reformation", "종교개혁", "luther"], [], limit=40
         )
     elif mode == "bible_hub":
         # 대표 구절 몇 개

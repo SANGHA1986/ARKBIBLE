@@ -37,6 +37,9 @@ _STATE = {
     "commentaries": 0,
     "sources": 0,
     "characters": 0,
+    "strong": 0,
+    "concepts": 0,
+    "doctrines": 0,
 }
 
 
@@ -48,6 +51,9 @@ def _counts() -> dict:
             "commentaries": db.query(models.Commentary).count(),
             "sources": db.query(models.Source).count(),
             "characters": db.query(models.Character).count(),
+            "strong": db.query(models.StrongEntry).count(),
+            "concepts": db.query(models.Concept).count(),
+            "doctrines": db.query(models.Doctrine).count(),
         }
     finally:
         db.close()
@@ -277,6 +283,154 @@ def load_commentaries_snapshot() -> int:
     return n
 
 
+def _ensure_registry(
+    db,
+    code: str,
+    title: str,
+    author: str,
+    source_url: str,
+    copyright_status: str,
+    license_type: str,
+    attribution_text: str,
+) -> models.SourceRegistry:
+    row = db.query(models.SourceRegistry).filter_by(code=code).first()
+    if row:
+        return row
+    row = models.SourceRegistry(
+        code=code,
+        title=title or code,
+        author=author or "",
+        publisher="ARK bootstrap",
+        source_url=source_url or "",
+        source_type="Lexicon",
+        copyright_owner=author or "",
+        copyright_status=copyright_status or "Public Domain",
+        license_type=license_type or "Public Domain",
+        attribution_text=attribution_text or title or code,
+        commercial_use=True,
+        allow_ai_quote=True,
+        verification_status="공개수집",
+    )
+    db.add(row)
+    db.flush()
+    return row
+
+
+def load_lexicon_snapshot() -> dict:
+    strong_gz = os.path.join(BOOT_DIR, "strong_entries.jsonl.gz")
+    exp_gz = os.path.join(BOOT_DIR, "lexicon_expansions.jsonl.gz")
+    if not os.path.exists(strong_gz):
+        _set("lexicon", "strong_entries.jsonl.gz missing — skip")
+        return {"strong": 0, "expansions": 0}
+
+    _set("lexicon", "loading Strong's lexicon…")
+    db = SessionLocal()
+    reg_cache: dict[str, int] = {}
+    n_s = n_e = skip_s = skip_e = 0
+    try:
+        with gzip.open(strong_gz, "rt", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                row = json.loads(line)
+                sn = (row.get("strong_number") or "").strip().upper()
+                if not sn:
+                    continue
+                if db.query(models.StrongEntry.id).filter_by(strong_number=sn).first():
+                    skip_s += 1
+                    continue
+                code = (row.get("source_code") or "STRONGS_OS").strip()
+                if code not in reg_cache:
+                    reg = _ensure_registry(
+                        db,
+                        code=code,
+                        title=row.get("source_title") or code,
+                        author=row.get("source_author") or "",
+                        source_url=row.get("source_url") or "",
+                        copyright_status=row.get("copyright_status") or "Public Domain",
+                        license_type=row.get("license_type") or "Public Domain",
+                        attribution_text=row.get("attribution_text") or code,
+                    )
+                    reg_cache[code] = reg.id
+                db.add(
+                    models.StrongEntry(
+                        strong_number=sn,
+                        language_type=row.get("language_type") or ("Greek" if sn.startswith("G") else "Hebrew"),
+                        lemma=row.get("lemma"),
+                        transliteration=row.get("transliteration"),
+                        pronunciation=row.get("pronunciation"),
+                        gloss=row.get("gloss"),
+                        definition_short=row.get("definition_short"),
+                        definition_full=row.get("definition_full"),
+                        morphology_hint=row.get("morphology_hint"),
+                        root_word=row.get("root_word"),
+                        source_id=reg_cache[code],
+                        content_hash=row.get("content_hash"),
+                    )
+                )
+                n_s += 1
+                if n_s % 500 == 0:
+                    db.commit()
+                    _STATE["strong"] = n_s
+                    _set("lexicon", f"loading Strong's… {n_s}")
+        db.commit()
+
+        if os.path.exists(exp_gz):
+            _set("lexicon", "loading STEP expansions…")
+            with gzip.open(exp_gz, "rt", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    row = json.loads(line)
+                    sn = (row.get("strong_number") or "").strip().upper()
+                    name = (row.get("lexicon_name") or "").strip()
+                    text = (row.get("entry_text") or "").strip()
+                    if not sn or not name or not text:
+                        continue
+                    code = (row.get("source_code") or "STEP").strip()
+                    if code not in reg_cache:
+                        reg = _ensure_registry(
+                            db,
+                            code=code,
+                            title=row.get("source_title") or code,
+                            author=row.get("source_author") or "",
+                            source_url=row.get("source_url") or "",
+                            copyright_status=row.get("copyright_status") or "CC BY 4.0",
+                            license_type=row.get("license_type") or "CC BY 4.0",
+                            attribution_text=row.get("attribution_text") or "STEP Bible",
+                        )
+                        reg_cache[code] = reg.id
+                    exists = (
+                        db.query(models.LexiconExpansion.id)
+                        .filter_by(strong_number=sn, lexicon_name=name, source_id=reg_cache[code])
+                        .first()
+                    )
+                    if exists:
+                        skip_e += 1
+                        continue
+                    db.add(
+                        models.LexiconExpansion(
+                            strong_number=sn,
+                            lexicon_name=name,
+                            entry_text=text,
+                            source_id=reg_cache[code],
+                            content_hash=row.get("content_hash"),
+                        )
+                    )
+                    n_e += 1
+                    if n_e % 400 == 0:
+                        db.commit()
+                        _set("lexicon", f"loading expansions… {n_e}")
+            db.commit()
+    finally:
+        db.close()
+    out = {"strong": n_s, "expansions": n_e, "skip_strong": skip_s, "skip_exp": skip_e}
+    _set("lexicon", f"lexicon loaded {out}")
+    return out
+
+
 def run_bootstrap(force: bool = False) -> dict:
     with _LOCK:
         if _STATE["running"]:
@@ -298,14 +452,17 @@ def run_bootstrap(force: bool = False) -> dict:
         else:
             _set("ko", f"KO already loaded ({c['verses']})")
 
-        if _counts()["characters"] < 50 or force:
-            seed_kg_safe()
+        # 지식망 upsert — 교부·종교개혁 인물/교리 반영
+        seed_kg_safe()
 
         if _counts()["sources"] < 40 or force:
             load_sources_snapshot()
 
         if _counts()["commentaries"] < 1000 or force:
             load_commentaries_snapshot()
+
+        if _counts()["strong"] < 10000 or force:
+            load_lexicon_snapshot()
 
         final = _counts()
         _STATE.update(final)
