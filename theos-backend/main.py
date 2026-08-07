@@ -261,10 +261,20 @@ def get_sefaria_passage(ref_key: str, username: str = "free_user", db: Session =
     }
 
 @app.get("/api/bible/{book_name}/{chapter}/{verse}")
-def get_verse_analysis(book_name: str, chapter: int, verse: int, db: Session = Depends(get_db)):
+def get_verse_analysis(
+    book_name: str,
+    chapter: int,
+    verse: int,
+    lang: str = "KO",
+    db: Session = Depends(get_db),
+):
     """
     특정 성경 구절과 관련된 모든 지식 그래프(인물, 사건, 장소, 다중 해석)를 가져오는 메인 엔드포인트
     """
+    from book_i18n import normalize_lang
+
+    lang = normalize_lang(lang)
+    en = lang == "EN"
     # 1. 구절 기본 정보 조회
     book = db.query(models.BibleBook).filter(models.BibleBook.name == book_name).first()
     if not book:
@@ -349,6 +359,32 @@ def get_verse_analysis(book_name: str, chapter: int, verse: int, db: Session = D
 
     ko = (verse_obj.text_ko or "").strip()
     ko_is_placeholder = not ko or ko.startswith("[공개 한국어")
+    if en:
+        translation_en = "World English Bible (WEB) · Public Domain" if verse_obj.text_en else None
+        translation_ko = (
+            None if ko_is_placeholder else "Korean Revised Hangul (1961) · Public Domain"
+        )
+        translation_note = (
+            "Korean text: Revised Hangul (1961), public domain. "
+            "English text: WEB (public domain). "
+            "Some verses may exist in only one language due to versification. "
+            "Copyrighted Korean editions (e.g. New Korean Revised Version) are not included."
+            if (verse_obj.text_en or verse_obj.text_ko)
+            else None
+        )
+    else:
+        translation_en = "영문 WEB · 퍼블릭 도메인" if verse_obj.text_en else None
+        translation_ko = (
+            None if ko_is_placeholder else "개역한글(1961) · 퍼블릭 도메인(등록분)"
+        )
+        translation_note = (
+            "한국어 본문은 개역한글(1961) 퍼블릭 도메인입니다. "
+            "영문 본문은 WEB 퍼블릭 도메인입니다. "
+            "절 체계 차이로 한쪽만 있는 경우가 있습니다. "
+            "개역개정 등 저작권 유효 역본은 실지 않았습니다."
+            if (verse_obj.text_en or verse_obj.text_ko)
+            else None
+        )
     # 2. 관련 데이터 취합 (SQLAlchemy ORM Relationships 활용)
     return {
         "reference": f"{book.name} {chapter}:{verse}",
@@ -356,17 +392,9 @@ def get_verse_analysis(book_name: str, chapter: int, verse: int, db: Session = D
         "translated_text": verse_obj.text_ko,
         "text_en": verse_obj.text_en,
         "text_ko": verse_obj.text_ko,
-        "translation_en": "World English Bible (WEB) · Public Domain" if verse_obj.text_en else None,
-        "translation_ko": (
-            None if ko_is_placeholder else "개역한글(1961) · Public Domain (등록분)"
-        ),
-        "translation_note": (
-            "한국어: 개역한글(1961) PD. 영문: WEB(PD). "
-            "일부 절은 절 체계 차이로 한쪽만 있을 수 있습니다. "
-            "개역개정 등 저작권 유효 역본은 미수록."
-            if (verse_obj.text_en or verse_obj.text_ko)
-            else None
-        ),
+        "translation_en": translation_en,
+        "translation_ko": translation_ko,
+        "translation_note": translation_note,
         "related_verses": related[:16],
         "related_characters": [{"name": c.name, "era": c.era} for c in verse_obj.characters],
         "related_events": [{"name": e.name, "historical_background": e.historical_background} for e in verse_obj.events],

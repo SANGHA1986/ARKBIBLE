@@ -94,16 +94,16 @@ function SearchInner() {
           suggest: "제안하기",
           welcomeTitle: "탐색",
           welcomeBody:
-            "구절(예: 창세기 9:16), 인물·사건, 주제뿐 아니라 공개 논문·학술지도 검색할 수 있습니다. 논문은 「논문」「학술지」또는 영문 주제어(theology, biblical)로 찾으세요. 칼뱅 요약 등은 서적 시드입니다.",
+            "구절(예: 창세기 9:16), 인물·사건, 주제, 공개 논문·학술지를 검색할 수 있습니다. 논문은 「논문」「학술지」「신학」으로 찾으세요. 칼뱅 요약 등은 서적 시드입니다.",
           tryExample: "예: 블레셋의 침공",
           tryVerse: "예: 창세기 4장",
           tryPapers: "예: 논문",
-          tryTheology: "예: theology",
+          tryTheology: "예: 신학",
           searchTipsTitle: "검색 안내",
           searchTipsPapers:
-            "논문·학술지: 「논문」「학술지」「신학」「theology」「biblical」— 결과는 「자료·서적」에서 JournalArticle으로 표시됩니다. (공개 OA 초록·메타, 영문 제목 위주)",
+            "논문·학술지: 「논문」「학술지」「신학」「성서학」— 결과는 자료 목록에서 논문으로 표시됩니다. (공개 초록·메타, 제목은 원문 언어 그대로일 수 있음)",
           searchTipsBooks:
-            "서적·요약 시드: 「칼뱅」「Institutes」「교부」등 — 논문과 별개입니다.",
+            "서적·요약 시드: 「칼뱅」「교부」등 — 논문과 별개입니다.",
           searchTipsTradition:
             "교파 용어: 가톨릭(천주교)은 보통 「하느님」, 개신교(한국에서 흔히 기독교)는 「하나님」. 질문할 때 관점을 밝혀 주시면 혼동을 줄입니다. 역본에 따라 구절 표현이 다를 수 있습니다.",
           topicHits: "검색 결과",
@@ -217,7 +217,9 @@ function SearchInner() {
   };
 
   const fetchVerse = async (book: string, chapter: number, verse: number) => {
-    const res = await fetch(`${API}/api/bible/${book}/${chapter}/${verse}`);
+    const res = await fetch(
+      `${API}/api/bible/${book}/${chapter}/${verse}?lang=${encodeURIComponent(lang)}`
+    );
     if (!res.ok) throw new Error(lang === "KO" ? "구절 없음" : "Verse not found");
     const json = await res.json();
     setData(json);
@@ -491,8 +493,9 @@ function SearchInner() {
             <button
               type="button"
               onClick={() => {
-                setSearchQuery("theology");
-                runSearch("theology");
+                const q = lang === "KO" ? "신학" : "theology";
+                setSearchQuery(q);
+                runSearch(q);
               }}
               className="px-4 py-2 rounded-lg border border-ark-navy text-ark-navy text-sm font-semibold"
             >
@@ -1601,13 +1604,14 @@ function SearchInner() {
                     </p>
                   </div>
                 )}
+                {lang === "KO" && data.translation_ko && (
+                  <p className="text-[11px] text-ark-brown">{data.translation_ko}</p>
+                )}
+                {lang === "EN" && data.translation_en && (
+                  <p className="text-[11px] text-ark-brown">{data.translation_en}</p>
+                )}
                 {data.translation_note && (
                   <p className="text-[11px] text-ark-grey">{data.translation_note}</p>
-                )}
-                {(data.translation_en || data.translation_ko) && (
-                  <p className="text-[11px] text-ark-brown">
-                    {[data.translation_ko, data.translation_en].filter(Boolean).join(" · ")}
-                  </p>
                 )}
               </div>
             </div>
@@ -1672,8 +1676,8 @@ function SearchInner() {
                   </h2>
                   <span className="text-[10px] text-ark-grey ml-auto">
                     {lang === "KO"
-                      ? "영문 PD/CC0 · 한국어 요약은 AI로 요청 가능"
-                      : "EN PD/CC0 · ask AI for KO summary"}
+                      ? "영문 공개 주석 · 한국어 요약은 아래에서 요청"
+                      : "English public-domain notes · ask AI for a Korean summary"}
                   </span>
                 </div>
                 <div className="space-y-3">

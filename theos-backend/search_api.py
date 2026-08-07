@@ -235,9 +235,26 @@ def _localized_messages(lang: str):
 
 
 def _verse_payload(v, lang: str, reason: str = ""):
+    from book_i18n import normalize_lang
+
     book_ko = v.book.name
     ko = (v.text_ko or "").strip()
     ko_is_placeholder = not ko or ko.startswith("[공개 한국어")
+    en = normalize_lang(lang) == "EN"
+    if en:
+        translation_en = "World English Bible (WEB) · Public Domain" if v.text_en else None
+        translation_ko = (
+            None
+            if ko_is_placeholder
+            else "Korean Revised Hangul (1961) · Public Domain"
+        )
+    else:
+        translation_en = "영문 WEB · 퍼블릭 도메인" if v.text_en else None
+        translation_ko = (
+            None
+            if ko_is_placeholder
+            else "개역한글(1961) · 퍼블릭 도메인(등록분)"
+        )
     return {
         "reference": verse_ref_display(book_ko, v.chapter_num, v.verse_num, lang),
         "book": book_display(book_ko, lang),
@@ -247,17 +264,33 @@ def _verse_payload(v, lang: str, reason: str = ""):
         "text_ko": v.text_ko,
         "text_en": v.text_en,
         "text_original": v.text_original,
-        "translation_en": "World English Bible (WEB) · Public Domain" if v.text_en else None,
-        "translation_ko": (
-            None
-            if ko_is_placeholder
-            else "개역한글(1961) · Public Domain (등록분)"
-        ),
+        "translation_en": translation_en,
+        "translation_ko": translation_ko,
         "reason": reason,
     }
 
 
-def _material_payload(src) -> dict:
+def _clean_display_title(title: str, lang: str) -> str:
+    """영문 제목에 붙은 한글 괄호 표기 제거 — 언어 혼류 방지."""
+    from book_i18n import normalize_lang
+
+    t = (title or "").strip()
+    if not t:
+        return t
+    # 제목 속 한글 부가 표기 제거
+    t = re.sub(r"\s*[\(（][^)）]*공개[^)）]*[\)）]", "", t)
+    t = re.sub(r"\s*[\(（][^)）]*요약[^)）]*[\)）]", "", t)
+    t = re.sub(r"\s*[\(（][^)）]*시드[^)）]*[\)）]", "", t)
+    t = re.sub(r"\s*—\s*공개[^\n]*$", "", t)
+    if normalize_lang(lang) == "EN":
+        # 영문 UI에서는 제목에 한글이 남아 있으면 제거된 영문만
+        if re.search(r"[가-힣]", t) and re.search(r"[A-Za-z]", t):
+            t = re.sub(r"[가-힣]+", " ", t)
+            t = re.sub(r"\s{2,}", " ", t).strip(" -·|/")
+    return t.strip() or (title or "").strip()
+
+
+def _material_payload(src, lang: str = "KO") -> dict:
     lic = getattr(src, "license", None)
     license_label = (
         (lic.license_type if lic else None)
@@ -277,7 +310,7 @@ def _material_payload(src) -> dict:
         pass
     return {
         "kind": "source",
-        "title": src.title,
+        "title": _clean_display_title(src.title or "", lang),
         "author": src.author,
         "type": src.source_type or "Book",
         "source_type": src.source_type or "Book",
@@ -423,7 +456,7 @@ def _match_source_blob(src, terms: list[str], query: str) -> bool:
     return False
 
 
-def _collect_materials(db, query: str, x_terms, tokens, limit: int = 24) -> list:
+def _collect_materials(db, query: str, x_terms, tokens, limit: int = 24, lang: str = "KO") -> list:
     terms = _material_search_terms(query, x_terms, tokens)
     paper_first = _wants_papers(query)
     if paper_first:
@@ -450,7 +483,7 @@ def _collect_materials(db, query: str, x_terms, tokens, limit: int = 24) -> list
             continue
         if not _match_source_blob(src, terms, query):
             continue
-        out.append(_material_payload(src))
+        out.append(_material_payload(src, lang=lang))
         have.add(src.title)
         if len(out) >= limit:
             break
@@ -546,7 +579,7 @@ def _fill_category_browse(db, results: dict, mode: str, lang: str, msg: dict) ->
         ):
             if not _source_license_ok(src):
                 continue
-            out.append(_material_payload(src))
+            out.append(_material_payload(src, lang=lang))
             if len(out) >= 60:
                 break
         results["materials"] = out
@@ -583,7 +616,7 @@ def _fill_category_browse(db, results: dict, mode: str, lang: str, msg: dict) ->
                     "institutes",
                 )
             ):
-                out.append(_material_payload(src))
+                out.append(_material_payload(src, lang=lang))
             if len(out) >= 40:
                 break
         results["materials"] = out
@@ -613,7 +646,7 @@ def _fill_category_browse(db, results: dict, mode: str, lang: str, msg: dict) ->
                 }
             )
         results["materials"] = _collect_materials(
-            db, "교부", ["교부", "patristic", "fathers", "chrysostom", "augustine"], [], limit=40
+            db, "교부", ["교부", "patristic", "fathers", "chrysostom", "augustine"], [], limit=40, lang=lang
         )
     elif mode == "reformation":
         reform_names = ("루터", "칼뱅", "츠빙글리", "멜란히톤", "녹스")
@@ -646,7 +679,7 @@ def _fill_category_browse(db, results: dict, mode: str, lang: str, msg: dict) ->
                 }
             )
         results["materials"] = _collect_materials(
-            db, "칼뱅", ["calvin", "institutes", "reformation", "종교개혁", "luther"], [], limit=40
+            db, "칼뱅", ["calvin", "institutes", "reformation", "종교개혁", "luther"], [], limit=40, lang=lang
         )
     elif mode == "bible_hub":
         # 대표 구절만 — 성경 카테고리 입구
@@ -972,7 +1005,7 @@ def unified_search(q: str, username: str = "free_user", db: Session = None, lang
             )
 
     if _wants_materials_catalog(query) or _wants_papers(query):
-        results["materials"] = _collect_materials(db, query, x_terms, tokens, limit=24)
+        results["materials"] = _collect_materials(db, query, x_terms, tokens, limit=24, lang=lang)
 
     # 번역 확장 키워드로 KO/EN 본문·책명 LIKE 검색
     if results["mode"] == "topic" and len(results["verses"]) < 12:
@@ -1030,7 +1063,7 @@ def unified_search(q: str, username: str = "free_user", db: Session = None, lang
     # 공개 자료: 확장 키워드로 재스캔 (인물/사건 유무와 무관)
     if results["mode"] == "topic":
         have_titles = {m.get("title") for m in results["materials"]}
-        extra = _collect_materials(db, query, x_terms, tokens, limit=24)
+        extra = _collect_materials(db, query, x_terms, tokens, limit=24, lang=lang)
         for m in extra:
             if m.get("title") in have_titles:
                 continue
