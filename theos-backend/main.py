@@ -439,7 +439,7 @@ def trending_feed(lang: str = "KO", db: Session = Depends(get_db)):
             return source_type
         return "자료"
 
-  // 1) 인기 구절 — DB에 실제 본문 있는 것만 (클라우드 적재 중 빈 링크 방지)
+    # 1) 인기 구절 — DB에 실제 본문 있는 것만 (클라우드 적재 중 빈 링크 방지)
     popular_refs = [
         ("요한복음", 3, 16),
         ("창세기", 1, 1),
