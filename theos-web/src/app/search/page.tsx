@@ -270,14 +270,26 @@ function SearchInner() {
         return;
       }
 
-      if (json.message) {
+      if (json.message && !json.browse) {
         setError(json.message);
+      } else {
+        setError(null);
       }
 
       setTopic(json);
       setResultPage(1);
-      // auto-select first rich item
-      if (json.characters?.[0]) {
+      const browse = json.browse as string | undefined;
+      if (browse === "commentary" || browse === "papers" || browse === "fathers") {
+        if (json.materials?.[0]) {
+          setSelected({ type: "material", data: json.materials[0] });
+        } else if (json.characters?.[0]) {
+          setSelected({ type: "character", data: json.characters[0] });
+        } else {
+          setSelected(null);
+        }
+      } else if (browse === "bible_hub" && json.verses?.[0]) {
+        setSelected({ type: "verse_row", data: json.verses[0] });
+      } else if (json.characters?.[0]) {
         setSelected({ type: "character", data: json.characters[0] });
       } else if (json.events?.[0]) {
         setSelected({ type: "event", data: json.events[0] });
@@ -289,6 +301,8 @@ function SearchInner() {
         setSelected({ type: "material", data: json.materials[0] });
       } else if (json.strong?.[0]) {
         setSelected({ type: "strong", data: json.strong[0] });
+      } else if (json.verses?.[0]) {
+        setSelected({ type: "verse_row", data: json.verses[0] });
       } else {
         setSelected(null);
       }
@@ -934,11 +948,24 @@ function SearchInner() {
                 <section className="bg-white border border-[#E8E2D9] rounded-2xl p-4 shadow-soft">
                   <div className="flex items-center gap-2 text-ark-brown mb-3">
                     <Library className="w-4 h-4" />
-                    <h3 className="font-bold text-sm">{t.materials}</h3>
+                    <h3 className="font-bold text-sm">
+                      {topic.browse === "commentary"
+                        ? lang === "KO"
+                          ? "주석 자료"
+                          : "Commentaries"
+                        : topic.browse === "papers"
+                          ? lang === "KO"
+                            ? "논문·학술지"
+                            : "Papers / Journals"
+                          : t.materials}
+                    </h3>
                     <span className="ml-auto text-[10px] text-ark-grey">
                       {topic.materials.length} · {t.pageOf} {resultPage}/{Math.max(1, Math.ceil(topic.materials.length / RESULTS_PER_PAGE))}
                     </span>
                   </div>
+                  {topic.message && (topic.browse === "commentary" || topic.browse === "papers") && (
+                    <p className="text-xs text-ark-grey mb-3 leading-relaxed">{topic.message}</p>
+                  )}
                   <div className="space-y-2">
                     {topic.materials
                       .slice(

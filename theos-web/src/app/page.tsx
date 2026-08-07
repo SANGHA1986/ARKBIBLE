@@ -71,29 +71,29 @@ const CATEGORIES = [
     ko: "성경",
     en: "Bible",
     icon: BookOpen,
-    hrefKo: "/search?q=요한복음 3:16",
-    hrefEn: "/search?q=John 3:16",
+    hrefKo: "/search?q=성경",
+    hrefEn: "/search?q=Bible",
   },
   {
     ko: "인물",
     en: "People",
     icon: User,
-    hrefKo: "/search?q=모세",
-    hrefEn: "/search?q=Moses",
+    hrefKo: "/search?q=인물",
+    hrefEn: "/search?q=People",
   },
   {
     ko: "사건",
     en: "Events",
     icon: CalendarDays,
-    hrefKo: "/search?q=출애굽",
-    hrefEn: "/search?q=Exodus",
+    hrefKo: "/search?q=사건",
+    hrefEn: "/search?q=Events",
   },
   {
     ko: "장소",
     en: "Places",
     icon: MapPin,
-    hrefKo: "/search?q=예루살렘",
-    hrefEn: "/search?q=Jerusalem",
+    hrefKo: "/search?q=장소",
+    hrefEn: "/search?q=Places",
   },
   {
     ko: "교리",
@@ -121,8 +121,8 @@ const CATEGORIES = [
     ko: "주석",
     en: "Commentary",
     icon: FileSearch,
-    hrefKo: "/search?q=창세기 1:1",
-    hrefEn: "/search?q=Genesis 1:1",
+    hrefKo: "/search?q=주석",
+    hrefEn: "/search?q=Commentary",
   },
   {
     ko: "논문",
@@ -280,7 +280,7 @@ export default function Home() {
           live: "흐르는 연구 노트",
           loading: "불러오는 중…",
           catHint:
-            "각 항목은 DB에 등록된 자료로 연결됩니다. 클라우드 적재 직후에는 수 분이 더 걸릴 수 있습니다.",
+            "성경=본문 · 주석=주석 자료 · 논문=논문. 써진 이름대로만 연결됩니다.",
         }
       : {
           subtitle:
@@ -292,7 +292,7 @@ export default function Home() {
           live: "Research Feed",
           loading: "Loading…",
           catHint:
-            "Each tile opens registered DB content. Cloud bootstrap may take a few more minutes after deploy.",
+            "Bible=verses · Commentary=commentaries · Papers=papers. Each opens its own list.",
         };
 
   const topicRow = TOPICS.map((topic) => (

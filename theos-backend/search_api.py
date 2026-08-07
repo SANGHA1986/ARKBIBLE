@@ -536,13 +536,66 @@ def _fill_category_browse(db, results: dict, mode: str, lang: str, msg: dict) ->
                 "등록된 교리/개념이 아직 적습니다." if lang == "KO" else "Few doctrine concepts yet."
             )
     elif mode == "papers":
-        results["materials"] = _collect_materials(db, "논문", [], [], limit=60)
+        out = []
+        for src in (
+            db.query(models.Source)
+            .filter(models.Source.source_type == "JournalArticle")
+            .order_by(models.Source.id.desc())
+            .limit(80)
+            .all()
+        ):
+            if not _source_license_ok(src):
+                continue
+            out.append(_material_payload(src))
+            if len(out) >= 60:
+                break
+        results["materials"] = out
+        results["message"] = (
+            "공개 학술 논문(초록·메타) 목록입니다. 성경 본문·주석과 별개입니다."
+            if lang == "KO"
+            else "Open-access journal papers (abstract/meta). Separate from Bible text and commentaries."
+        )
         if not results["materials"]:
             results["message"] = (
                 "등록된 OA 논문이 없습니다." if lang == "KO" else "No OA papers registered."
             )
     elif mode == "commentary":
-        results["materials"] = _collect_materials(db, "주석", ["commentary", "주석"], [], limit=40)
+        out = []
+        for src in db.query(models.Source).order_by(models.Source.id).all():
+            if not _source_license_ok(src):
+                continue
+            st = (src.source_type or "").strip().lower()
+            if st == "journalarticle":
+                continue
+            blob = f"{src.title or ''} {src.tags or ''} {src.description or ''} {src.author or ''}".lower()
+            if st in ("commentary", "book", "patristic", "catechism") or any(
+                k in blob
+                for k in (
+                    "commentary",
+                    "주석",
+                    "henry",
+                    "clarke",
+                    "gill",
+                    "jamieson",
+                    "tyndale",
+                    "wesley",
+                    "keil",
+                    "institutes",
+                )
+            ):
+                out.append(_material_payload(src))
+            if len(out) >= 40:
+                break
+        results["materials"] = out
+        results["message"] = (
+            "공개 주석·강해 자료 목록입니다. 특정 구절의 주석을 보려면 구절을 검색하세요. (예: 창세기 1:1)"
+            if lang == "KO"
+            else "Public commentary list. For verse-linked notes, search a verse (e.g. Genesis 1:1)."
+        )
+        if not results["materials"]:
+            results["message"] = (
+                "등록된 주석 자료가 없습니다." if lang == "KO" else "No commentaries registered."
+            )
     elif mode == "fathers":
         father_names = ("어거스틴", "아타나시우스", "크리소스톰", "제롬", "오리겐", "터툴리아누스")
         for ch in (
@@ -596,8 +649,17 @@ def _fill_category_browse(db, results: dict, mode: str, lang: str, msg: dict) ->
             db, "칼뱅", ["calvin", "institutes", "reformation", "종교개혁", "luther"], [], limit=40
         )
     elif mode == "bible_hub":
-        # 대표 구절 몇 개
-        for book_name, ch, vs in (("창세기", 1, 1), ("요한복음", 3, 16), ("로마서", 8, 28)):
+        # 대표 구절만 — 성경 카테고리 입구
+        for book_name, ch, vs in (
+            ("창세기", 1, 1),
+            ("출애굽기", 20, 1),
+            ("시편", 23, 1),
+            ("이사야", 53, 5),
+            ("마태복음", 5, 3),
+            ("요한복음", 3, 16),
+            ("로마서", 8, 28),
+            ("요한계시록", 21, 1),
+        ):
             book = db.query(models.BibleBook).filter_by(name=book_name).first()
             if not book:
                 continue
@@ -609,9 +671,9 @@ def _fill_category_browse(db, results: dict, mode: str, lang: str, msg: dict) ->
             if v:
                 results["verses"].append(_verse_payload(v, lang, msg.get("reason_keyword", "")))
         results["message"] = (
-            "구절·장 형식으로 검색하세요. 예: 창세기 9:16, 요한복음 3장"
+            "성경 본문 입구입니다. 구절·장으로 검색하세요. 예: 창세기 1:1, 요한복음 3장"
             if lang == "KO"
-            else "Search by verse/chapter, e.g. Genesis 9:16"
+            else "Bible text hub. Search by verse/chapter, e.g. Genesis 1:1"
         )
 
 
