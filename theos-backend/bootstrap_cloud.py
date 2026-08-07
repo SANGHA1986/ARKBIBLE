@@ -1,13 +1,15 @@
 """
-클라우드(Render) 부트스트랩 — 테스트용으로 본문+주석+논문+지식망까지 채움.
+클라우드(Render) 부트스트랩 — 저장소에 동봉한 데이터로 빠르게 복구.
 
-Git에 *.db 를 올리지 않으므로, 배포 서버는 이 스크립트로 채운다.
-무료 인스턴스는 재배포 시 디스크가 비워질 수 있어, 기동 시 자동 재적재한다.
+무료 Render는 재시작 시 DB가 비워지므로, Git에 넣은 스냅샷으로
+본문·주석·논문·지식망을 수 분 안에 다시 채운다.
 """
 from __future__ import annotations
 
+import gzip
+import hashlib
+import json
 import os
-import sys
 import threading
 import time
 
@@ -23,6 +25,7 @@ from collect_ko_pd_bible import (
     DATA_DIR,
 )
 
+BOOT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data_bootstrap")
 
 _LOCK = threading.Lock()
 _STATE = {
@@ -130,79 +133,148 @@ def seed_kg_safe() -> None:
     gaps_main()
 
 
-def collect_papers_safe(limit: int = 100) -> None:
-    _set("papers", f"collecting OA papers (limit={limit})…")
-    import collect_oa_papers as papers
+def _ensure_source(db, title: str, author: str, license_label: str, source_url: str, source_type: str) -> models.Source:
+    src = db.query(models.Source).filter_by(title=title).first()
+    if src:
+        return src
+    src = models.Source(
+        title=title,
+        author=author or "",
+        publisher="ARK bootstrap snapshot",
+        source_url=source_url or "",
+        source_type=source_type or "Commentary",
+        copyright_owner=author or "",
+        copyright_status=license_label or "CC0-1.0",
+        academic_level="A",
+        verification_status="공개수집",
+        tags="주석, commentary, bootstrap",
+        description=f"{title} — {author}",
+    )
+    db.add(src)
+    db.commit()
+    db.refresh(src)
+    return src
 
-    old = list(sys.argv)
+
+def load_sources_snapshot() -> int:
+    path = os.path.join(BOOT_DIR, "sources.jsonl")
+    if not os.path.exists(path):
+        _set("sources", "sources.jsonl missing — skip")
+        return 0
+    _set("sources", "loading sources snapshot…")
+    db = SessionLocal()
+    n = 0
     try:
-        sys.argv = ["collect_oa_papers.py", "--limit", str(limit)]
-        papers.main()
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                row = json.loads(line)
+                title = (row.get("title") or "").strip()
+                if not title:
+                    continue
+                existing = db.query(models.Source).filter_by(title=title).first()
+                if existing:
+                    continue
+                db.add(
+                    models.Source(
+                        title=title,
+                        author=row.get("author") or "",
+                        source_type=row.get("source_type") or "JournalArticle",
+                        copyright_status=row.get("copyright_status") or "CC BY",
+                        source_url=row.get("source_url") or "",
+                        description=(row.get("description") or "")[:2000],
+                        academic_level="B",
+                        verification_status="공개수집",
+                        tags="논문, paper, bootstrap",
+                    )
+                )
+                n += 1
+                if n % 50 == 0:
+                    db.commit()
+        db.commit()
     finally:
-        sys.argv = old
+        db.close()
+    _set("sources", f"sources loaded +{n}")
+    return n
 
 
-def collect_commentaries_safe() -> None:
-    """목사 테스트용: 핵심 책 × 전 CC0 주석 세트."""
-    _set("commentaries", "collecting CC0 commentaries (core books)…")
-    import collect_open_commentaries as co
+def load_commentaries_snapshot() -> int:
+    gz = os.path.join(BOOT_DIR, "commentaries_core.jsonl.gz")
+    raw = os.path.join(BOOT_DIR, "commentaries_core.jsonl")
+    if os.path.exists(gz):
+        opener = lambda: gzip.open(gz, "rt", encoding="utf-8")
+    elif os.path.exists(raw):
+        opener = lambda: open(raw, "r", encoding="utf-8")
+    else:
+        _set("commentaries", "commentaries snapshot missing — skip")
+        return 0
 
-    core_books = [
-        "john",
-        "genesis",
-        "romans",
-        "matthew",
-        "psalms",
-        "isaiah",
-        "exodus",
-        "acts",
-        "luke",
-        "mark",
-        "hebrews",
-        "revelation",
-        "1-corinthians",
-        "philippians",
-        "james",
-        "1-john",
-        "galatians",
-        "ephesians",
-        "colossians",
-        "1-peter",
-    ]
-    # 우선순위 목록을 핵심 책으로 일시 교체
-    old_priority = list(co.PRIORITY_BOOKS)
-    old_argv = list(sys.argv)
+    _set("commentaries", "loading commentary snapshot…")
+    db = SessionLocal()
+    book_cache: dict[str, int] = {}
+    n = 0
+    skip = 0
     try:
-        co.PRIORITY_BOOKS[:] = core_books
-        sys.argv = ["collect_open_commentaries.py"]
-        co.main()
+        with opener() as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                row = json.loads(line)
+                book_name = row.get("book")
+                text = (row.get("text") or "").strip()
+                if not book_name or not text:
+                    continue
+                if book_name not in book_cache:
+                    b = db.query(models.BibleBook).filter_by(name=book_name).first()
+                    if not b:
+                        skip += 1
+                        continue
+                    book_cache[book_name] = b.id
+                passage = row.get("passage_ref") or f"{book_name}.{row.get('chapter')}"
+                title = (row.get("title") or "Public Commentary").strip()
+                author = (row.get("author") or "").strip()
+                src = _ensure_source(
+                    db,
+                    title=title,
+                    author=author,
+                    license_label=row.get("license") or "CC0-1.0",
+                    source_url=row.get("source_url") or "",
+                    source_type="Commentary",
+                )
+                exists = (
+                    db.query(models.Commentary.id)
+                    .filter_by(source_id=src.id, passage_ref=passage)
+                    .first()
+                )
+                if exists:
+                    skip += 1
+                    continue
+                h = hashlib.sha256(text.encode("utf-8")).hexdigest()[:32]
+                db.add(
+                    models.Commentary(
+                        source_id=src.id,
+                        book_id=book_cache[book_name],
+                        chapter_num=int(row.get("chapter") or 1),
+                        verse_start=row.get("verse_start"),
+                        verse_end=row.get("verse_end"),
+                        passage_ref=passage,
+                        commentary_text=text,
+                        content_hash=h,
+                    )
+                )
+                n += 1
+                if n % 300 == 0:
+                    db.commit()
+                    _STATE["commentaries"] = n
+                    _set("commentaries", f"loading commentaries… {n}")
+        db.commit()
     finally:
-        co.PRIORITY_BOOKS[:] = old_priority
-        sys.argv = old_argv
-
-
-def collect_crossrefs_safe() -> None:
-    _set("crossrefs", "collecting OpenBible cross-references…")
-    import collect_cross_references as xref
-
-    old = list(sys.argv)
-    try:
-        sys.argv = ["collect_cross_references.py"]
-        xref.main()
-    finally:
-        sys.argv = old
-
-
-def collect_lexicons_safe() -> None:
-    _set("lexicons", "collecting Strong/STEP lexicons…")
-    import collect_open_lexicons as lex
-
-    old = list(sys.argv)
-    try:
-        sys.argv = ["collect_open_lexicons.py"]
-        lex.main()
-    finally:
-        sys.argv = old
+        db.close()
+    _set("commentaries", f"commentaries loaded +{n} (skip {skip})")
+    return n
 
 
 def run_bootstrap(force: bool = False) -> dict:
@@ -211,44 +283,29 @@ def run_bootstrap(force: bool = False) -> dict:
             return status()
         _STATE["running"] = True
         _STATE["done"] = False
-        _set("start", "starting full beta bootstrap")
+        _set("start", "starting packaged bootstrap")
 
     try:
         models.Base.metadata.create_all(bind=engine)
         c = _counts()
 
-        # 1) 본문
+        _set("books", "ensuring 66 books…")
+        ensure_books()
+
         if c["verses"] < 30000 or force:
-            _set("books", "ensuring 66 books…")
-            ensure_books()
             stats = load_ko_pd()
             _set("ko", f"KO done {stats}")
         else:
             _set("ko", f"KO already loaded ({c['verses']})")
 
-        # 2) 지식망
-        if c["characters"] < 50 or force or _counts()["characters"] < 50:
+        if _counts()["characters"] < 50 or force:
             seed_kg_safe()
 
-        # 3) 논문
         if _counts()["sources"] < 40 or force:
-            collect_papers_safe(limit=100)
+            load_sources_snapshot()
 
-        # 4) 주석 (시간 김 — 백그라운드 스레드에서 실행)
         if _counts()["commentaries"] < 1000 or force:
-            collect_commentaries_safe()
-
-        # 5) 연관구절
-        try:
-            collect_crossrefs_safe()
-        except Exception as e:
-            _set("crossrefs", f"skipped: {e}")
-
-        # 6) 원어
-        try:
-            collect_lexicons_safe()
-        except Exception as e:
-            _set("lexicons", f"skipped: {e}")
+            load_commentaries_snapshot()
 
         final = _counts()
         _STATE.update(final)
