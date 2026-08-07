@@ -1094,7 +1094,7 @@ class RagEngine:
                 "Use ONLY the provided lexicon blocks. Plain text, no markdown. "
                 "Sections: 1. Verified Facts 2. Traditional Interpretations "
                 "3. Scholarly Views 4. Further Research. "
-                "Start with the English meaning in one clear sentence."
+                "Quote the English gloss/definition first; do not invent senses."
             )
         return (
             "당신은 목회자·신학생을 돕는 원어 안내자입니다. "
@@ -1105,17 +1105,18 @@ class RagEngine:
             "2. 전통적 해석\n"
             "3. 학계 다양한 견해\n"
             "4. 추가 연구\n"
-            "필수:\n"
-            "- 1번 맨 앞에 「한국어 뜻: …」한 줄을 먼저 쓰십시오. "
-            "예: 한국어 뜻: 크게 기뻐함, 환희 (기뻐 날뛰는 기쁨).\n"
-            "- 이어서 Strong 번호, 원어 표기, 음역을 짧게.\n"
-            "- 그다음 영문 gloss/definition을 「영문 근거」로 한두 줄만.\n"
-            "- STEP HTML 태그는 제거하고 핵심 뜻만.\n"
-            "- 교단 교의·설교 적용을 지어내지 마십시오.\n"
-            "- 2번은 「사전 정의 수준이며, 교의 해석은 주석을 보라」정도.\n"
-            "- 3번은 Strong's(1890) 고전 참고 / 현대 사전과 다를 수 있음.\n"
-            "- 4번은 /study?strong=번호 안내.\n"
-            "- 답변 전체는 한국어."
+            "필수(오역 방지):\n"
+            "- 1번 맨 앞에 「영문 근거(Strong's): …」를 원문 그대로 두십시오. "
+            "영문 gloss/definition을 바꾸거나 늘리지 마십시오.\n"
+            "- 그다음 Strong 번호·원어·음역.\n"
+            "- 「참고 풀어쓰기(비공식): …」는 영문을 아주 짧게만 옮기고, "
+            "「정식 한국어 원어사전이 아님·오역 가능」을 반드시 적으십시오.\n"
+            "- 교의·설교 적용·추가 뉘앙스를 지어내지 마십시오.\n"
+            "- STEP HTML은 제거하고 영문 핵심만.\n"
+            "- 2번: 사전 정의 수준 / 교의는 주석 참고.\n"
+            "- 3번: Strong's(1890) 고전 참고, 현대 사전과 다를 수 있음.\n"
+            "- 4번: /study?strong=번호\n"
+            "- 안내 문장은 한국어, 영문 근거 줄은 영어 유지."
         )
 
     def build_strong_answer(self, db: Session, query: str, entries, lang: str = "KO"):
@@ -1160,77 +1161,7 @@ class RagEngine:
                 seen.add(key)
                 unique.append(c)
 
-        # LLM으로 한국어 뜻 우선 설명 시도
-        ctx_lines = []
-        for b in blocks:
-            e = b["e"]
-            ctx_lines.append(
-                f"[Strong {e.strong_number}]\n"
-                f"lemma={e.lemma or '—'}\n"
-                f"transliteration={e.transliteration or '—'}\n"
-                f"gloss_en={b['gloss'] or '—'}\n"
-                f"definition_en={(b['definition'] or '')[:600] or '—'}\n"
-                f"root={e.root_word or '—'}\n"
-                + ("\n".join(b["exp"]) if b["exp"] else "")
-            )
-        ctx = "\n\n".join(ctx_lines)
-        llm_answer = None
-        if not en:
-            # 원어 전용 시스템 프롬프트로 호출
-            load_env()
-            api_key = os.environ.get("OPENROUTER_API_KEY")
-            if api_key:
-                try:
-                    model_name = os.environ.get("RAG_MODEL", "deepseek/deepseek-v4-flash")
-                    response = requests.post(
-                        "https://openrouter.ai/api/v1/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {api_key}",
-                            "Content-Type": "application/json",
-                            "HTTP-Referer": "http://localhost:3000",
-                            "X-Title": "ARK",
-                        },
-                        json={
-                            "model": model_name,
-                            "messages": [
-                                {"role": "system", "content": self._strong_lexicon_system_prompt(lang)},
-                                {
-                                    "role": "user",
-                                    "content": (
-                                        f"사용자 질문: {query}\n\n"
-                                        f"[등록 원어 사전 블록]\n{ctx}\n\n"
-                                        "한국어 뜻을 맨 앞에 두고 설명해 주십시오."
-                                    ),
-                                },
-                            ],
-                            "temperature": 0.1,
-                        },
-                        timeout=45,
-                    )
-                    if response.status_code == 200:
-                        choices = (response.json() or {}).get("choices") or []
-                        if choices:
-                            text = (choices[0].get("message") or {}).get("content") or ""
-                            llm_answer = strip_answer_markdown(text) or None
-                except Exception:
-                    llm_answer = None
-
-        if llm_answer and ("한국어 뜻" in llm_answer or len(llm_answer) > 80):
-            return {
-                "query": query,
-                "answer": llm_answer,
-                "difficulty_level": "Easy",
-                "source_citations": unique,
-                "cached": False,
-                "reliability": {
-                    "citation_count": len(unique),
-                    "source_reliability": "A",
-                    "is_controversial": False,
-                    "confidence_score": 0.93,
-                },
-            }
-
-        # LLM 없거나 실패 → 한국어 뜻 먼저 고정 템플릿
+        # 오역 방지: 원어 답은 LLM 자유 번역 없이, 영문 근거 우선 고정 템플릿 사용
         parts = []
         for b in blocks:
             e = b["e"]
@@ -1243,15 +1174,18 @@ class RagEngine:
                     + ("\n".join(b["exp"]) if b["exp"] else "")
                 )
             else:
-                ko = self._ko_meaning_from_en_gloss(b["gloss"], b["definition"])
+                ko_hint = self._ko_meaning_from_en_gloss(b["gloss"], b["definition"])
+                en_gloss = b["gloss"] or "—"
+                en_def = (b["definition"] or "")[:300] or "—"
                 parts.append(
-                    f"한국어 뜻: {ko}\n"
+                    f"영문 근거(Strong's, 우선): {en_gloss}\n"
+                    f"영문 정의: {en_def}\n"
                     f"원어: {e.strong_number} {e.lemma or ''} ({e.transliteration or ''})\n"
-                    f"영문 근거(Strong's): {b['gloss'] or b['definition'][:120] or '—'}\n"
-                    f"정의(영문): {(b['definition'] or '')[:300]}\n"
                     f"어원: {e.root_word or '—'}\n"
+                    f"참고 풀어쓰기(비공식·오역 가능): {ko_hint}\n"
+                    "※ 한국어 정식 원어사전이 아닙니다. 설교·교의 확정은 영문 근거·주석을 확인하십시오.\n"
                     + (
-                        "확장(STEP, 요약): " + self._strip_lexicon_html(b["exp"][0])[:280]
+                        "STEP(영문 요약): " + self._strip_lexicon_html(b["exp"][0])[:280]
                         if b["exp"]
                         else ""
                     )
@@ -1272,15 +1206,15 @@ class RagEngine:
         else:
             answer = (
                 plain_section("1. 확인된 사실")
-                + "공개 영문 원어 사전(Strong's / STEP)을 한국어로 풀어 안내합니다. "
-                "한국어 정식 원어사전 복제가 아닙니다.\n\n"
+                + "공개 영문 원어 사전(Strong's / STEP) 근거입니다. "
+                "한국어는 참고 풀어쓰기일 뿐, 정식 번역이 아닙니다.\n\n"
                 + "\n\n".join(parts)
                 + plain_section("2. 전통적 해석")
-                + "위는 사전 뜻풀이 수준입니다. 교단별 교의·설교 적용은 주석 자료를 참고하십시오.\n"
+                + "위는 사전 정의 수준입니다. 교단별 교의·설교 적용은 주석을 참고하십시오.\n"
                 + plain_section("3. 학계 다양한 견해")
                 + "Strong's(1890)는 고전 참고용이며, 현대 사전(BDAG 등)과 다를 수 있습니다.\n"
                 + plain_section("4. 추가 연구")
-                + f"원어 상세: /study?strong={entries[0].strong_number}\n"
+                + f"원어 상세(영문): /study?strong={entries[0].strong_number}\n"
             )
         return {
             "query": query,
@@ -1292,7 +1226,7 @@ class RagEngine:
                 "citation_count": len(unique),
                 "source_reliability": "A",
                 "is_controversial": False,
-                "confidence_score": 0.92,
+                "confidence_score": 0.9,
             },
         }
 

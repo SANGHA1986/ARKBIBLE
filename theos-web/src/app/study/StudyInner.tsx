@@ -16,6 +16,7 @@ type StrongPayload = {
   pronunciation?: string;
   gloss?: string;
   gloss_en?: string;
+  gloss_ko_note?: string;
   definition_full?: string;
   root_word?: string;
   source?: {
@@ -103,8 +104,8 @@ export default function StudyInner() {
         </div>
         <p className="text-sm text-ark-grey">
           {lang === "KO"
-            ? "Strong 번호로 원문·영문 정의를 조회합니다. (G=헬라어, H=히브리어 — Strong’s 사전 색인)"
-            : "Look up lemmas and English definitions by Strong’s number (G=Greek, H=Hebrew)."}
+            ? "Strong 번호로 원문·영문 정의를 조회합니다. (G=헬라어, H=히브리어) 한국어 정식 원어사전은 없으며, 영문 근거가 우선입니다."
+            : "Look up lemmas and English definitions by Strong’s number (G=Greek, H=Hebrew). English source text is authoritative."}
         </p>
       </div>
 
@@ -164,8 +165,16 @@ export default function StudyInner() {
                   </div>
                 </div>
                 <div className="text-sm font-medium text-ark-navy">
+                  <span className="text-[11px] font-bold text-ark-grey uppercase tracking-wide block mb-1">
+                    {lang === "KO" ? "영문 근거 (우선)" : "English gloss (primary)"}
+                  </span>
                   {data.gloss_en || data.gloss || "—"}
                 </div>
+                {lang === "KO" && data.gloss_ko_note && (
+                  <p className="text-[11px] text-ark-grey leading-relaxed border-l-2 border-ark-brown/30 pl-2">
+                    {data.gloss_ko_note}
+                  </p>
+                )}
                 {data.root_word && (
                   <p className="text-xs text-ark-grey">Root: {data.root_word}</p>
                 )}

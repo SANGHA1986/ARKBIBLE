@@ -200,8 +200,9 @@ def get_strong_entry(strong_number: str, username: str = "free_user", db: Sessio
         "gloss_ko": None,
         "gloss_ko_available": False,
         "gloss_ko_note": (
-            "공개 Strong's/STEP는 영문 정의입니다. 한국어 정식 원어 사전은 저작권상 적재하지 않았습니다. "
-            "한국어 설명은 어시스턴트가 등록된 영문 기록만 바탕으로 안내합니다."
+            "공개 Strong's/STEP는 영문 정의가 근거입니다. "
+            "한국어 정식 원어 사전은 저작권상 아직 없습니다. "
+            "한국어는 참고 풀어쓰기(비공식)일 뿐이며, 설교·교의 확정은 영문 근거를 우선하십시오."
         ),
         "definition_short": entry.definition_short,
         "definition_full": entry.definition_full,
