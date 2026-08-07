@@ -619,12 +619,185 @@ class RagEngine:
             },
         }
 
+    def lookup_event_for_query(self, db: Session, query: str):
+        """질문에서 사건명 매칭 (긴 이름 우선)."""
+        events = db.query(models.Event).all()
+        hits = [ev for ev in events if ev.name and ev.name in query]
+        if not hits:
+            return None
+        hits.sort(key=lambda e: len(e.name or ""), reverse=True)
+        return hits[0]
+
+    def build_event_explain_answer(self, db: Session, query: str, ev, lang: str = "KO"):
+        """사건 해석 — 등록 배경 + 연결 구절 본문 + (있으면) 주석. 빈 템플릿 금지."""
+        from book_i18n import normalize_lang, verse_ref_display
+
+        en = normalize_lang(lang) == "EN"
+        citations = []
+        verse_lines = []
+        ctx_blocks = []
+
+        bg = (ev.historical_background or "").strip()
+        chars = [c.name for c in (ev.characters or [])]
+        verses = list(ev.verses or [])
+        # 연결 구절이 적으면 같은 장에서 보강(최대 8절)
+        if verses and len(verses) < 5:
+            sample = verses[0]
+            more = (
+                db.query(models.Verse)
+                .filter_by(book_id=sample.book_id, chapter_num=sample.chapter_num)
+                .order_by(models.Verse.verse_num)
+                .limit(12)
+                .all()
+            )
+            seen = {(v.book_id, v.chapter_num, v.verse_num) for v in verses}
+            for v in more:
+                key = (v.book_id, v.chapter_num, v.verse_num)
+                if key not in seen:
+                    verses.append(v)
+                    seen.add(key)
+                if len(verses) >= 8:
+                    break
+
+        for v in verses[:8]:
+            ref = verse_ref_display(v.book.name, v.chapter_num, v.verse_num, lang)
+            ko = (v.text_ko or "").strip()
+            en_txt = (v.text_en or "").strip()
+            body = ko if (not en and ko and not ko.startswith("[공개")) else (en_txt or ko or "—")
+            verse_lines.append(f"- {ref}: {body}")
+            ctx_blocks.append(f"[Verse {ref}]\n{body}")
+
+        # 주석 샘플 (연결 구절 기준)
+        comm_lines = []
+        for v in verses[:3]:
+            comms = (
+                db.query(models.Commentary)
+                .filter_by(book_id=v.book_id, chapter_num=v.chapter_num)
+                .limit(2)
+                .all()
+            )
+            for c in comms:
+                src = c.source
+                title = src.title if src else "Commentary"
+                text = (c.commentary_text or "").strip()[:400]
+                if not text:
+                    continue
+                comm_lines.append(f"- [{title}] {c.passage_ref or ''}: {text}")
+                ctx_blocks.append(f"[Commentary {title}]\n{text}")
+                if src:
+                    citations.append({
+                        "title": src.title,
+                        "author": src.author or "",
+                        "license_type": src.copyright_status or "",
+                        "source_url": src.source_url or "",
+                        "attribution": src.description or "",
+                    })
+                if len(comm_lines) >= 4:
+                    break
+            if len(comm_lines) >= 4:
+                break
+
+        # LLM 가능 시 DB 블록만으로 풀어쓰기 (없으면 고정 서술)
+        llm_answer = None
+        if not en and (bg or verse_lines):
+            ctx = (
+                f"[Event]\nname={ev.name}\nperiod={ev.period or ''}\nbackground={bg}\n"
+                f"characters={', '.join(chars)}\n\n"
+                + "\n\n".join(ctx_blocks)
+            )
+            llm_answer = self.call_grounded_llm(
+                query,
+                ctx
+                + "\n\n규칙: 위 DB 블록만으로 「이 사건이 무엇인지」를 한국어로 설명. "
+                "없는 교리 논쟁을 지어내지 말 것. 구절 본문을 인용할 것.",
+                lang=lang,
+                timeout=50,
+            )
+
+        if llm_answer and len(llm_answer) > 80 and "찾을 수 없" not in llm_answer:
+            return {
+                "query": query,
+                "answer": llm_answer,
+                "difficulty_level": "Medium",
+                "source_citations": citations,
+                "cached": False,
+                "reliability": {
+                    "citation_count": len(citations),
+                    "source_reliability": "A" if verse_lines else "B",
+                    "is_controversial": False,
+                    "confidence_score": 0.88,
+                },
+            }
+
+        char_txt = ", ".join(chars) if chars else ("none registered" if en else "미등록")
+        if en:
+            answer = (
+                plain_section("1. Verified Facts")
+                + f"Event: {ev.name}\n"
+                + f"Period: {ev.period or '—'}\n"
+                + f"Summary (registered): {bg or '—'}\n"
+                + f"People: {char_txt}\n\n"
+                + ("Related verses:\n" + "\n".join(verse_lines) + "\n" if verse_lines else "")
+                + plain_section("2. Traditional Interpretations")
+                + (
+                    "Registered commentary excerpts:\n" + "\n".join(comm_lines) + "\n"
+                    if comm_lines
+                    else "No commentary excerpt loaded for this event seed.\n"
+                )
+                + plain_section("3. Scholarly Views")
+                + "Only open/registered records are asserted here.\n"
+                + plain_section("4. Further Research")
+                + f"/search?q={ev.name}\n"
+            )
+        else:
+            answer = (
+                plain_section("1. 확인된 사실")
+                + f"사건: {ev.name}\n"
+                + f"시기: {ev.period or '—'}\n"
+                + f"등록 요약: {bg or '—'}\n"
+                + f"관련 인물: {char_txt}\n\n"
+                + (
+                    "관련 구절 본문(DB):\n" + "\n".join(verse_lines) + "\n\n"
+                    if verse_lines
+                    else "연결 구절 본문이 부족합니다.\n\n"
+                )
+                + plain_section("2. 전통적 해석")
+                + (
+                    "등록 주석 발췌:\n" + "\n".join(comm_lines) + "\n"
+                    if comm_lines
+                    else "이 사건 시드에 연결된 주석 발췌가 아직 적습니다. 위 구절 본문을 우선 근거로 보십시오.\n"
+                )
+                + plain_section("3. 학계 다양한 견해")
+                + "여기서는 DB에 등록된 공개 기록 범위만 확정합니다.\n"
+                + plain_section("4. 추가 연구")
+                + f"통합 검색: /search?q={ev.name}\n"
+                + "대표 본문: 사도행전 15장\n"
+            )
+        return {
+            "query": query,
+            "answer": answer,
+            "difficulty_level": "Medium",
+            "source_citations": citations,
+            "cached": False,
+            "reliability": {
+                "citation_count": len(citations) + len(verse_lines),
+                "source_reliability": "A" if verse_lines else "B",
+                "is_controversial": False,
+                "confidence_score": 0.9 if (bg and verse_lines) else 0.75,
+            },
+        }
+
     def build_explain_from_db(self, db: Session, query: str, lang: str = "KO"):
         """모든 '설명/해석' 요청의 단일 진입점 — DB 등록분만 근거로 해석(무관 Strong 제외)."""
         # 1) 구절 참조 (최우선)
         ref_verses = self.lookup_verses_by_reference(db, query) or []
         if ref_verses:
             return self.build_verse_explain_answer(db, query, ref_verses, lang=lang)
+
+        # 1b) 사건명 매칭 — 빈 템플릿 대신 구절·배경으로 설명
+        ev = self.lookup_event_for_query(db, query)
+        if ev:
+            return self.build_event_explain_answer(db, query, ev, lang=lang)
 
         # 2) 등록 자료(Source)
         matched_sources = self.lookup_sources_for_query(db, query)
@@ -1395,55 +1568,9 @@ class RagEngine:
                 return self.build_strong_answer(db, query, strong_hits, lang=lang)
 
         # 사건/주제 키워드 (구절을 몰라도 검색)
-        events = db.query(models.Event).all()
-        for ev in events:
-            if ev.name in query or (
-                ev.historical_background
-                and any(
-                    t in ev.historical_background
-                    for t in re.findall(r"[가-힣]{2,}", query)
-                    if len(t) >= 2
-                )
-                and len(query) <= 40
-            ):
-                # 이름 직접 포함이거나, 짧은 질문에서 배경 키워드 매칭
-                name_hit = ev.name in query
-                token_hit = any(t in (ev.name + (ev.historical_background or "")) for t in re.findall(r"[가-힣]{2,}", query))
-                if not (name_hit or (token_hit and any(k in query for k in ["침공", "전쟁", "싸움", "사건", "누구", "무엇", "언제"]))):
-                    if not name_hit:
-                        continue
-                chars = ", ".join([c.name for c in ev.characters]) or "미등록"
-                verses = ", ".join(
-                    [f"{v.book.name} {v.chapter_num}:{v.verse_num}" for v in ev.verses]
-                ) or "연결된 구절 시드 부족 — AI/추가 수집으로 보완 예정"
-                answer = (
-                    f"### 1. 확인된 사실\n"
-                    f"- **사건**: {ev.name}\n"
-                    f"- **시기**: {ev.period or '미상'}\n"
-                    f"- **배경**: {ev.historical_background or '—'}\n"
-                    f"- **관련 인물**: {chars}\n\n"
-                    f"### 2. 전통적 해석\n"
-                    f"- 이 사건은 구속사·역사 서술에서 전통별로 강조점이 다를 수 있습니다. 탭에서 전통을 구분해 보십시오.\n\n"
-                    f"### 3. 학계 다양한 견해\n"
-                    f"- 연대·고고학·문학비평 관점이 병존합니다. 여기서는 DB에 등록된 공개 기록 범위만 확정합니다.\n\n"
-                    f"### 4. 추가 연구 자료\n"
-                    f"- **관련 구절(시드)**: {verses}\n"
-                    f"- 통합 검색: `/search?q={ev.name}`\n"
-                    f"- 구절을 몰라도 인물·사건 키워드로 찾을 수 있습니다."
-                )
-                return {
-                    "query": query,
-                    "answer": answer,
-                    "difficulty_level": "Easy",
-                    "source_citations": [],
-                    "cached": False,
-                    "reliability": {
-                        "citation_count": 0,
-                        "source_reliability": "B",
-                        "is_controversial": False,
-                        "confidence_score": 0.85,
-                    },
-                }
+        ev = self.lookup_event_for_query(db, query)
+        if ev:
+            return self.build_event_explain_answer(db, query, ev, lang=lang)
 
         characters = db.query(models.Character).all()
         from book_i18n import KO_TO_EN_CHAR, char_display, verse_ref_display, normalize_lang as _nl
@@ -1644,6 +1771,8 @@ class RagEngine:
                     "등록되어 있지 않습니다",
                     "확인할 수 없습니다",
                     "서술할 수 없습니다",
+                    "탭에서 전통을 구분",
+                    "연결된 구절 시드 부족",
                 )
             ):
                 continue

@@ -51,9 +51,9 @@ def upsert_character(db: Session, name, original, era, info) -> models.Character
 def upsert_event(db: Session, name, period, bg) -> models.Event:
     row = db.query(models.Event).filter_by(name=name).first()
     if row:
-        if period and not row.period:
+        if period and (not row.period or len(row.period) < len(period)):
             row.period = period
-        if bg and (not row.historical_background or len(row.historical_background) < 8):
+        if bg and (not row.historical_background or len(row.historical_background) < len(bg)):
             row.historical_background = bg
         return row
     row = models.Event(name=name, period=period, historical_background=bg)
@@ -170,6 +170,7 @@ CHARACTERS = [
     ("느부갓네살", "נְבוּכַדְנֶאצַּר", "바벨론", "유다를 멸하고 포로로 이끈 왕.", [("열왕기하", 25, 1)]),
     ("고레스", "כּוֹרֶשׁ", "페르시아", "귀환을 허락한 페르시아 왕.", [("에스라", 1, 1)]),
     ("가브리엘", "Γαβριήλ", "천사", "마리아에게 수태를 알린 천사.", [("누가복음", 1, 26)]),
+    ("야고보(주의 형제)", "Ἰάκωβος", "초대교회", "예루살렘 교회의 지도자. 예루살렘 공의회에서 결정을 정리함.", [("사도행전", 15, 13), ("갈라디아서", 1, 19)]),
     ("미가엘", "Μιχαήλ", "천사", "천사장으로 언급됨.", [("유다서", 1, 9)]),
     # 교부·종교개혁 (홈 카테고리용)
     ("어거스틴", "Aurelius Augustinus", "교부", "히포의 감독. 《고백록》《하나님의 도성》. 서방 신학의 큰 줄기.", [("로마서", 5, 12)]),
@@ -226,7 +227,13 @@ EVENTS = [
     ("오순절", "초대교회", "성령 강림과 교회의 시작.", [("사도행전", 2, 4)]),
     ("스데반 순교", "초대교회", "첫 순교.", [("사도행전", 7, 59)]),
     ("바울의 회심", "초대교회", "다메섹 도상에서의 부르심.", [("사도행전", 9, 3)]),
-    ("예루살렘 공의회", "초대교회", "이방 신자와 율법 문제 논의.", [("사도행전", 15, 6)]),
+    ("예루살렘 공의회", "초대교회",
+     "사도행전 15장. 이방인 신자에게 할례·모세 율법 준수를 구원의 조건으로 요구하는 문제가 일어나, "
+     "사도와 장로들이 예루살렘에 모여 논의했다. 베드로는 이방인도 주 예수의 은혜로 구원받는다고 증언했고, "
+     "야고보(주의 형제)는 이방인을 괴롭게 하지 말고 우상의 더러운 것·음행·목매어 죽인 것·피를 멀리하라고 정리했다. "
+     "성령과 사도들의 결정으로 이방 교회에 편지를 보냈다.",
+     [("사도행전", 15, 1), ("사도행전", 15, 5), ("사도행전", 15, 6), ("사도행전", 15, 7),
+      ("사도행전", 15, 11), ("사도행전", 15, 19), ("사도행전", 15, 20), ("사도행전", 15, 28), ("사도행전", 15, 29)]),
     ("바울의 선교 여행", "초대교회", "이방에 복음을 전함.", [("사도행전", 13, 2)]),
 ]
 
@@ -378,6 +385,26 @@ def main():
             for book, c, v in refs:
                 link_verse(ev, verse_of(db, book, c, v))
             n_e += 1
+
+        # 사건–인물 연결 (해석에 관련 인물이 보이게)
+        event_chars = {
+            "예루살렘 공의회": ["베드로", "바울", "바나바", "야고보(주의 형제)"],
+            "오순절": ["베드로"],
+            "스데반 순교": ["스데반"],
+            "바울의 회심": ["바울"],
+            "바울의 선교 여행": ["바울", "바나바"],
+            "십자가": ["예수", "빌라도"],
+            "부활": ["예수", "마리아 막달라"],
+            "출애굽": ["모세", "아론"],
+        }
+        for ev_name, char_names in event_chars.items():
+            ev = db.query(models.Event).filter_by(name=ev_name).first()
+            if not ev:
+                continue
+            for cn in char_names:
+                ch = db.query(models.Character).filter_by(name=cn).first()
+                if ch and ch not in ev.characters:
+                    ev.characters.append(ch)
 
         for name, ancient, refs in LOCATIONS:
             loc = upsert_location(db, name, ancient)
