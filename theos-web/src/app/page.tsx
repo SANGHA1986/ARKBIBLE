@@ -131,13 +131,6 @@ const CATEGORIES = [
     hrefKo: "/search?q=논문",
     hrefEn: "/search?q=papers",
   },
-  {
-    ko: "자료",
-    en: "Sources",
-    icon: Library,
-    hrefKo: "/search?q=자료",
-    hrefEn: "/search?q=Sources",
-  },
 ];
 
 function TopicCard({
