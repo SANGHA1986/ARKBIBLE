@@ -1518,12 +1518,58 @@ class RagEngine:
             },
         }
 
+    def lookup_verses_by_reference(self, db: Session, query: str, limit: int = 5):
+        """시편 100 / 시편 100:1 / 요한복음 3장 16절 등 → DB 구절."""
+        try:
+            from search_api import parse_scripture_ref, resolve_book_name
+        except Exception:
+            return []
+        parsed = parse_scripture_ref(query)
+        if not parsed:
+            return []
+        book, ch, vs = parsed
+        book_row = db.query(models.BibleBook).filter_by(name=book).first()
+        if not book_row:
+            return []
+        if vs is not None:
+            v = (
+                db.query(models.Verse)
+                .filter_by(book_id=book_row.id, chapter_num=ch, verse_num=vs)
+                .first()
+            )
+            return [v] if v else []
+        return (
+            db.query(models.Verse)
+            .filter_by(book_id=book_row.id, chapter_num=ch)
+            .order_by(models.Verse.verse_num)
+            .limit(limit)
+            .all()
+        )
+
+    def _query_has_verse_ref(self, query: str) -> bool:
+        try:
+            from search_api import parse_scripture_ref
+            return parse_scripture_ref(query) is not None
+        except Exception:
+            return bool(
+                re.search(r"([가-힣A-Za-z0-9]+)\s+(\d+)\s*장\s+(\d+)", query)
+                or re.search(r"([가-힣A-Za-z0-9]+)\s+(\d+)\s*[:：]\s*(\d+)", query)
+                or re.search(r"([가-힣A-Za-z0-9]+)\s+(\d+)\s+(\d+)", query)
+            )
+
     def handle_materials_query(self, db: Session, query: str, lang: str = "KO"):
         """자료·주석 질문 — 등록 Source+Interpretation을 DB 그대로 반환 (추측 금지).
 
         특정 자료가 매칭되면 LLM으로 넘기지 않는다. (LLM이 '미등록'으로 오답하는 경우 방지)
-        구절 참조+해석 요청만 RAG로 넘긴다.
+        구절/장 참조+주석·원어 요청은 구절 경로로 넘긴다.
         """
+        # 시편 100 주석/원어 → 엉뚱한 OA 논문 대신 구절·주석 경로
+        try:
+            from search_api import parse_scripture_ref
+            if parse_scripture_ref(query):
+                return None
+        except Exception:
+            pass
         q = query.lower()
         matched = self.lookup_sources_for_query(db, query)
         wants_explain = any(
@@ -1549,26 +1595,28 @@ class RagEngine:
         results = matched
         if not results:
             results = []
+            tokens = [
+                t for t in self.tokenize(query)
+                if len(t) >= 3 and not t.isdigit()
+            ]
             for src in self._iter_safe_sources(db):
                 lic = getattr(src, "license", None)
                 if lic and not getattr(lic, "allow_ai_read", True):
+                    continue
+                # 구절 질문에서 OA 논문이 숫자 토큰으로 끌려오지 않게
+                if (src.source_type or "") == "JournalArticle" and any(
+                    k in q for k in ("주석", "commentary", "원어", "설교")
+                ):
                     continue
                 blob = (
                     f"{src.title or ''} {src.author or ''} {src.source_type or ''} "
                     f"{src.tags or ''} {src.description or ''}"
                 ).lower()
-                if any(t in blob for t in self.tokenize(query)) or q in blob:
+                if any(t in blob for t in tokens) or (len(q) >= 4 and q in blob):
                     results.append(src)
         if not results:
             return None
         return self.build_source_catalog_answer(db, query, results, lang=lang)
-
-    def _query_has_verse_ref(self, query: str) -> bool:
-        return bool(
-            re.search(r"([가-힣A-Za-z0-9]+)\s+(\d+)\s*장\s+(\d+)", query)
-            or re.search(r"([가-힣A-Za-z0-9]+)\s+(\d+)\s*[:：]\s*(\d+)", query)
-            or re.search(r"([가-힣A-Za-z0-9]+)\s+(\d+)\s+(\d+)", query)
-        )
 
     def handle_easy_routing(self, db: Session, query: str, lang: str = "KO", skip_strong: bool = False):
         """단순 조회: Strong(명시적일 때) · 인물 · 사건."""
@@ -1584,13 +1632,12 @@ class RagEngine:
             ):
                 return self.build_strong_answer(db, query, strong_hits, lang=lang)
 
-        # 사건/주제 키워드 (구절을 몰라도 검색)
         ev = self.lookup_event_for_query(db, query)
         if ev:
             return self.build_event_explain_answer(db, query, ev, lang=lang)
 
         characters = db.query(models.Character).all()
-        from book_i18n import KO_TO_EN_CHAR, char_display, verse_ref_display, normalize_lang as _nl
+        from book_i18n import KO_TO_EN_CHAR, char_display, normalize_lang as _nl
         en_mode = _nl(lang) == "EN"
         for char in characters:
             en_alias = KO_TO_EN_CHAR.get(char.name, "")
@@ -1665,52 +1712,9 @@ class RagEngine:
                             "confidence_score": 1.0,
                         },
                     }
-        # Strong만 매칭된 짧은 질문 (설명 요청이 아닐 때)
         if not skip_strong and strong_hits and len(query) <= 30:
             return self.build_strong_answer(db, query, strong_hits, lang=lang)
         return None
-
-    def lookup_verses_by_reference(self, db: Session, query: str, limit: int = 5):
-        """요한복음 3:16 / 창세기 1장 1절 형태면 DB 구절을 직접 가져옴."""
-        try:
-            from search_api import resolve_book_name
-        except Exception:
-            return []
-        q_norm = query.replace("절", " ").strip()
-        verse_m = (
-            re.search(r"([가-힣A-Za-z0-9]+)\s+(\d+)\s*장\s+(\d+)", q_norm)
-            or re.search(r"([가-힣A-Za-z0-9]+)\s+(\d+)\s*[:：]\s*(\d+)", q_norm)
-            or re.search(r"([가-힣A-Za-z0-9]+)\s+(\d+)\s+(\d+)", q_norm)
-        )
-        chapter_m = re.search(r"([가-힣A-Za-z0-9]+)\s+(\d+)\s*장", query)
-        out = []
-        if verse_m:
-            book = resolve_book_name(verse_m.group(1).strip())
-            ch, vs = int(verse_m.group(2)), int(verse_m.group(3))
-            if book:
-                book_row = db.query(models.BibleBook).filter_by(name=book).first()
-                if book_row:
-                    v = (
-                        db.query(models.Verse)
-                        .filter_by(book_id=book_row.id, chapter_num=ch, verse_num=vs)
-                        .first()
-                    )
-                    if v:
-                        out.append(v)
-        elif chapter_m:
-            book = resolve_book_name(chapter_m.group(1).strip())
-            ch = int(chapter_m.group(2))
-            if book:
-                book_row = db.query(models.BibleBook).filter_by(name=book).first()
-                if book_row:
-                    out = (
-                        db.query(models.Verse)
-                        .filter_by(book_id=book_row.id, chapter_num=ch)
-                        .order_by(models.Verse.verse_num)
-                        .limit(limit)
-                        .all()
-                    )
-        return out
 
     def generate_rag_response(self, db: Session, query: str, lang: str = "KO"):
         """
@@ -1723,8 +1727,21 @@ class RagEngine:
         # 매번 .env 재확인 (서버가 키 없이 떠 있어도 이후 로드 가능)
         load_env()
 
-        # ★ Strong 번호 질문이 최우선 — 캐시/LLM보다 먼저 원어 답변
-        if self._wants_strong_lookup(query):
+        # ★ 성경 장/구절이 있으면 주석·원어·추천은 구절 경로 (OA 논문 숫자 오탐 방지)
+        ref_early = self.lookup_verses_by_reference(db, query) or []
+        if ref_early:
+            qlow = query.lower()
+            if any(
+                k in qlow
+                for k in (
+                    "주석", "commentary", "추천", "해설", "해석", "설명해", "풀어",
+                    "원어", "lexicon", "strong", "찾아", "보여",
+                )
+            ) and not re.search(r"\b[GgHh]\s*0*\d{1,5}\b", query):
+                return self.build_verse_explain_answer(db, query, ref_early, lang=lang)
+
+        # ★ Strong 번호 질문이 최우선 — 단, 구절 참조와 겹치면 위에서 처리
+        if self._wants_strong_lookup(query) and not self._query_has_verse_ref(query):
             early_strong = self.lookup_strong_entries(db, query, limit=3)
             if early_strong and (
                 re.search(r"\b[GgHh]\s*0*\d{1,5}\b", query)

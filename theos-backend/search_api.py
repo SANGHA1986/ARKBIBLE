@@ -103,6 +103,40 @@ def resolve_book_name(raw: str):
     return BOOK_MAP.get(s.lower().replace(" ", ""))
 
 
+def parse_scripture_ref(query: str):
+    """질문 속 성경 참조 추출 → (한글책명, 장, 절|None) 또는 None.
+
+    '시편 100', '시편 100장', '시편 100:1', '시편 100 주석…' 모두 인식.
+    """
+    q = (query or "").replace("절", " ").strip()
+    if not q:
+        return None
+    verse_pats = (
+        r"([가-힣A-Za-z][가-힣A-Za-z0-9]*)\s+(\d+)\s*장\s+(\d+)",
+        r"([가-힣A-Za-z][가-힣A-Za-z0-9]*)\s+(\d+)\s*[:：]\s*(\d+)",
+        r"([가-힣A-Za-z][가-힣A-Za-z0-9]*)\s+(\d+)\s+(\d+)\b",
+    )
+    for pat in verse_pats:
+        m = re.search(pat, q)
+        if not m:
+            continue
+        book = resolve_book_name(m.group(1))
+        if book:
+            return book, int(m.group(2)), int(m.group(3))
+    chapter_pats = (
+        r"([가-힣A-Za-z][가-힣A-Za-z0-9]*)\s+(\d+)\s*장",
+        r"([가-힣A-Za-z][가-힣A-Za-z0-9]*)\s+(\d+)(?!\s*[:：])",
+    )
+    for pat in chapter_pats:
+        m = re.search(pat, q)
+        if not m:
+            continue
+        book = resolve_book_name(m.group(1))
+        if book:
+            return book, int(m.group(2)), None
+    return None
+
+
 # OSIS slug -> 한글 책명 (OpenChristianData / OpenBible 기준)
 OSIS_TO_KO = {
     "Gen": "창세기", "Exod": "출애굽기", "Lev": "레위기", "Num": "민수기",
@@ -799,69 +833,55 @@ def unified_search(q: str, username: str = "free_user", db: Session = None, lang
     q_norm = query.replace("절", " ").strip()
     scripture_hit = False
 
-    # 구절: 요한복음 4장 1절 / 요한복음 4:1 / 요한복음 4 1
-    verse_m = (
-        re.search(r"^(.+?)\s+(\d+)\s*장\s+(\d+)\s*$", q_norm)
-        or re.search(r"^(.+?)\s+(\d+)\s*[:：]\s*(\d+)\s*$", q_norm)
-        or re.search(r"^(.+?)\s+(\d+)\s+(\d+)\s*$", q_norm)
-    )
-    # 장: 요한복음 4장 / 요한복음 4
-    chapter_m = re.search(r"^(.+?)\s+(\d+)\s*장\s*$", query.strip()) or re.search(
-        r"^(.+?)\s+(\d+)\s*장\s*$", q_norm
-    )
-
-    if verse_m:
-        book = resolve_book_name(verse_m.group(1).strip())
-        chapter, verse = int(verse_m.group(2)), int(verse_m.group(3))
-        if book:
-            book_row = db.query(models.BibleBook).filter(models.BibleBook.name == book).first()
-            if book_row:
-                v = (
-                    db.query(models.Verse)
-                    .filter(
-                        models.Verse.book_id == book_row.id,
-                        models.Verse.chapter_num == chapter,
-                        models.Verse.verse_num == verse,
-                    )
-                    .first()
+    parsed = parse_scripture_ref(query)
+    # 하위 호환: parsed로 분기
+    if parsed and parsed[2] is not None:
+        book, chapter, verse = parsed
+        book_row = db.query(models.BibleBook).filter(models.BibleBook.name == book).first()
+        if book_row:
+            v = (
+                db.query(models.Verse)
+                .filter(
+                    models.Verse.book_id == book_row.id,
+                    models.Verse.chapter_num == chapter,
+                    models.Verse.verse_num == verse,
                 )
-                if v:
-                    scripture_hit = True
-                    results["mode"] = "verse"
-                    results["verse"] = _verse_payload(v, lang)
-                    results["commentaries"] = _fetch_commentaries(db, book_row, chapter, verse)
-                    results["cross_references"] = _fetch_cross_refs(db, book_row, chapter, verse, lang=lang)
-                else:
-                    scripture_hit = True
-                    results["mode"] = "verse"
-                    results["message"] = msg["verse_missing"](book, chapter, verse)
-
-    elif chapter_m:
-        book = resolve_book_name(chapter_m.group(1).strip())
-        chapter = int(chapter_m.group(2))
-        if book:
-            book_row = db.query(models.BibleBook).filter(models.BibleBook.name == book).first()
-            if book_row:
-                rows = (
-                    db.query(models.Verse)
-                    .filter(
-                        models.Verse.book_id == book_row.id,
-                        models.Verse.chapter_num == chapter,
-                    )
-                    .order_by(models.Verse.verse_num)
-                    .all()
-                )
+                .first()
+            )
+            if v:
                 scripture_hit = True
-                results["mode"] = "chapter"
-                results["chapter"] = {"book": book_display(book, lang), "book_ko": book, "chapter": chapter}
-                results["verses"] = [
-                    _verse_payload(v, lang)
-                    for v in rows
-                ]
-                if not rows:
-                    results["message"] = msg["chapter_missing"](book, chapter)
-                else:
-                    results["commentaries"] = _fetch_commentaries(db, book_row, chapter, verse=None, limit=4)
+                results["mode"] = "verse"
+                results["verse"] = _verse_payload(v, lang)
+                results["commentaries"] = _fetch_commentaries(db, book_row, chapter, verse)
+                results["cross_references"] = _fetch_cross_refs(db, book_row, chapter, verse, lang=lang)
+            else:
+                scripture_hit = True
+                results["mode"] = "verse"
+                results["message"] = msg["verse_missing"](book, chapter, verse)
+    elif parsed:
+        book, chapter, _verse = parsed
+        book_row = db.query(models.BibleBook).filter(models.BibleBook.name == book).first()
+        if book_row:
+            rows = (
+                db.query(models.Verse)
+                .filter(
+                    models.Verse.book_id == book_row.id,
+                    models.Verse.chapter_num == chapter,
+                )
+                .order_by(models.Verse.verse_num)
+                .all()
+            )
+            scripture_hit = True
+            results["mode"] = "chapter"
+            results["chapter"] = {"book": book_display(book, lang), "book_ko": book, "chapter": chapter}
+            results["verses"] = [
+                _verse_payload(v, lang)
+                for v in rows
+            ]
+            if not rows:
+                results["message"] = msg["chapter_missing"](book, chapter)
+            else:
+                results["commentaries"] = _fetch_commentaries(db, book_row, chapter, verse=None, limit=6)
 
     if scripture_hit:
         return results
