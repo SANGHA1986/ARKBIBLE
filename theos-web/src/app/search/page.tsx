@@ -70,12 +70,120 @@ function SearchInner() {
     commentaries?: any[];
     crossReferences?: any[];
   }>({});
-  const [expandedComments, setExpandedComments] = useState<Set<number>>(new Set());
+  const [commentChunks, setCommentChunks] = useState<Record<string, number>>({});
+  const COMMENT_CHUNK = 2000;
   const [, setScrapTick] = useState(0);
   const [resultPage, setResultPage] = useState(1);
   const RESULTS_PER_PAGE = 6;
 
   const refreshScrap = () => setScrapTick((n) => n + 1);
+
+  const commentVisible = (full: string, key: string) => {
+    const n = commentChunks[key] || 1;
+    const end = Math.min(full.length, n * COMMENT_CHUNK);
+    return {
+      text: full.slice(0, end),
+      hasMore: end < full.length,
+      chunks: n,
+      totalChunks: Math.max(1, Math.ceil(full.length / COMMENT_CHUNK)),
+    };
+  };
+
+  const bumpCommentChunk = (key: string) => {
+    setCommentChunks((prev) => ({ ...prev, [key]: (prev[key] || 1) + 1 }));
+  };
+
+  const resetCommentChunk = (key: string) => {
+    setCommentChunks((prev) => ({ ...prev, [key]: 1 }));
+  };
+
+  /** 시연: 요약은 앞 2000자만 AI에 보냄. 이어서 요약은 유료 자리만 둠. */
+  const askCommentSummary = (c: any) => {
+    const full = String(c.text || "");
+    const head = full.slice(0, COMMENT_CHUNK);
+    const note =
+      full.length > COMMENT_CHUNK
+        ? `\n\n[데모] 원문 ${full.length}자 중 앞 ${COMMENT_CHUNK}자만 요약 근거로 사용. 나머지 이어서 요약은 유료 준비중.`
+        : "";
+    askAiAbout(
+      `${c.author} 주석(${c.passage_ref})을 한국어로 짧게 요약해 주세요. 등록된 영문 PD/CC0 본문만 근거로 하고 추측하지 마세요. 제공된 구간이 원문 일부이면 그 구간만 요약하고 끊긴 척 추측하지 마세요.`,
+      `Author: ${c.author}\nLicense: ${c.license}\nPassage: ${c.passage_ref}\n\n${head}${note}`
+    );
+  };
+
+  const renderCommentaryCard = (c: any, idx: number, keyPrefix: string) => {
+    const key = `${keyPrefix}-${idx}-${c.passage_ref || ""}`;
+    const full = String(c.text || "");
+    const vis = commentVisible(full, key);
+    return (
+      <div key={key} className="p-3 bg-ark-bg rounded-lg border border-[#E8E2D9]">
+        <div className="font-bold text-sm text-ark-brown">{c.short_cite || c.author}</div>
+        <div className="text-[10px] text-ark-grey mb-2">
+          {c.license} · {c.passage_ref}
+          {full.length > COMMENT_CHUNK
+            ? lang === "KO"
+              ? ` · ${full.length.toLocaleString()}자 중 ${vis.text.length.toLocaleString()}자`
+              : ` · ${vis.text.length}/${full.length} chars`
+            : ""}
+        </div>
+        <p className="text-xs text-ark-navy/85 leading-relaxed whitespace-pre-line">{vis.text}</p>
+        {vis.hasMore && (
+          <p className="text-[10px] text-ark-grey mt-1">
+            {lang === "KO"
+              ? "…원문이 더 있습니다. 「더보기」로 다음 구간을 펼칩니다(추가 요금 없음)."
+              : "…More text available. Show more loads the next chunk (no extra API fee)."}
+          </p>
+        )}
+        <div className="mt-2 flex flex-wrap gap-3">
+          {vis.hasMore && (
+            <button
+              type="button"
+              onClick={() => bumpCommentChunk(key)}
+              className="inline-flex items-center gap-1 text-[11px] font-semibold text-ark-brown hover:opacity-80"
+            >
+              <ChevronDown className="w-3.5 h-3.5" />
+              {lang === "KO" ? "더보기" : "Show more"}
+            </button>
+          )}
+          {vis.chunks > 1 && (
+            <button
+              type="button"
+              onClick={() => resetCommentChunk(key)}
+              className="inline-flex items-center gap-1 text-[11px] font-semibold text-ark-grey hover:opacity-80"
+            >
+              <ChevronUp className="w-3.5 h-3.5" />
+              {lang === "KO" ? "접기" : "Collapse"}
+            </button>
+          )}
+          {lang === "KO" && full && (
+            <button
+              type="button"
+              onClick={() => askCommentSummary(c)}
+              className="inline-flex items-center gap-1 text-[11px] font-semibold text-ark-brown hover:opacity-80"
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              한국어 요약
+            </button>
+          )}
+          {full.length > COMMENT_CHUNK && (
+            <button
+              type="button"
+              disabled
+              title={
+                lang === "KO"
+                  ? "테스트 후 유료 연결 예정 · 지금은 자리만 둠"
+                  : "Paid continue-summary planned after beta"
+              }
+              className="inline-flex items-center gap-1 text-[11px] font-semibold text-ark-grey/50 cursor-not-allowed"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              {lang === "KO" ? "이어서 요약 (준비중)" : "Continue summary (soon)"}
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   const t =
     lang === "KO"
@@ -227,7 +335,7 @@ function SearchInner() {
         commentaries: json.commentaries || [],
         crossReferences: json.cross_references || [],
       });
-      setExpandedComments(new Set());
+      setCommentChunks({});
     } catch {
       /* keep previous extras */
     }
@@ -247,7 +355,7 @@ function SearchInner() {
       commentaries: json.commentaries || [],
       crossReferences: json.cross_references || [],
     });
-    setExpandedComments(new Set());
+    setCommentChunks({});
     if (json.interpretations?.length > 0) {
       setActiveTab(json.interpretations[0].viewpoint);
     }
@@ -1265,69 +1373,9 @@ function SearchInner() {
                           {lang === "KO" ? "건 · 영문 PD" : " · English PD"}
                         </span>
                       </div>
-                      {verseExtras.commentaries.map((c: any, idx: number) => {
-                        const isExpanded = expandedComments.has(idx);
-                        return (
-                          <div key={idx} className="p-3 bg-ark-bg rounded-lg border border-[#E8E2D9]">
-                            <div className="font-bold text-sm text-ark-brown">
-                              {c.short_cite || c.author}
-                            </div>
-                            <div className="text-[10px] text-ark-grey mb-2">
-                              {c.license} · {c.passage_ref}
-                            </div>
-                            <p
-                              className={`text-xs text-ark-navy/85 leading-relaxed whitespace-pre-line ${
-                                isExpanded ? "" : "line-clamp-6"
-                              }`}
-                            >
-                              {c.text}
-                            </p>
-                            <div className="mt-2 flex flex-wrap gap-3">
-                              {c.text && c.text.length > 260 && (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setExpandedComments((prev) => {
-                                      const next = new Set(prev);
-                                      if (next.has(idx)) next.delete(idx);
-                                      else next.add(idx);
-                                      return next;
-                                    })
-                                  }
-                                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-ark-brown hover:opacity-80"
-                                >
-                                  {isExpanded ? (
-                                    <>
-                                      <ChevronUp className="w-3.5 h-3.5" />
-                                      {lang === "KO" ? "접기" : "Collapse"}
-                                    </>
-                                  ) : (
-                                    <>
-                                      <ChevronDown className="w-3.5 h-3.5" />
-                                      {lang === "KO" ? "펼쳐보기" : "Show more"}
-                                    </>
-                                  )}
-                                </button>
-                              )}
-                              {lang === "KO" && c.text && (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    askAiAbout(
-                                      `${c.author} 주석(${c.passage_ref})을 한국어로 짧게 요약해 주세요. 등록된 영문 PD/CC0 본문만 근거로 하고 추측하지 마세요.`,
-                                      `Author: ${c.author}\nLicense: ${c.license}\nPassage: ${c.passage_ref}\n\n${String(c.text || "")}`
-                                    )
-                                  }
-                                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-ark-brown hover:opacity-80"
-                                >
-                                  <MessageSquare className="w-3.5 h-3.5" />
-                                  한국어 요약 요청
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
+                      {verseExtras.commentaries.map((c: any, idx: number) =>
+                        renderCommentaryCard(c, idx, "sel")
+                      )}
                     </div>
                   )}
                   {!verseExtras.commentaries?.length && selected.data.book_ko && (
@@ -1828,69 +1876,9 @@ function SearchInner() {
                   </span>
                 </div>
                 <div className="space-y-3">
-                  {verseExtras.commentaries.map((c: any, idx: number) => {
-                    const isExpanded = expandedComments.has(idx);
-                    return (
-                      <div key={idx} className="p-3 bg-ark-bg rounded-lg border border-[#E8E2D9]">
-                        <div className="font-bold text-sm text-ark-brown">
-                          {c.short_cite || c.author}
-                        </div>
-                        <div className="text-[10px] text-ark-grey mb-2">
-                          {c.license} · {c.passage_ref}
-                        </div>
-                        <p
-                          className={`text-xs text-ark-navy/85 leading-relaxed whitespace-pre-line ${
-                            isExpanded ? "" : "line-clamp-6"
-                          }`}
-                        >
-                          {c.text}
-                        </p>
-                        <div className="mt-2 flex flex-wrap gap-3">
-                          {c.text && c.text.length > 260 && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setExpandedComments((prev) => {
-                                  const next = new Set(prev);
-                                  if (next.has(idx)) next.delete(idx);
-                                  else next.add(idx);
-                                  return next;
-                                })
-                              }
-                              className="inline-flex items-center gap-1 text-[11px] font-semibold text-ark-brown hover:opacity-80"
-                            >
-                              {isExpanded ? (
-                                <>
-                                  <ChevronUp className="w-3.5 h-3.5" />
-                                  {lang === "KO" ? "접기" : "Collapse"}
-                                </>
-                              ) : (
-                                <>
-                                  <ChevronDown className="w-3.5 h-3.5" />
-                                  {lang === "KO" ? "펼쳐보기" : "Show more"}
-                                </>
-                              )}
-                            </button>
-                          )}
-                          {lang === "KO" && c.text && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                askAiAbout(
-                                  `${c.author} 주석(${c.passage_ref})을 한국어로 짧게 요약해 주세요. 등록된 영문 PD/CC0 본문만 근거로 하고 추측하지 마세요.`,
-                                  `Author: ${c.author}\nLicense: ${c.license}\nPassage: ${c.passage_ref}\n\n${String(c.text || "")}`
-                                )
-                              }
-                              className="inline-flex items-center gap-1 text-[11px] font-semibold text-ark-navy hover:text-ark-brown"
-                            >
-                              <Sparkles className="w-3.5 h-3.5" />
-                              한국어 요약
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {verseExtras.commentaries.map((c: any, idx: number) =>
+                    renderCommentaryCard(c, idx, "data")
+                  )}
                 </div>
               </div>
             )}

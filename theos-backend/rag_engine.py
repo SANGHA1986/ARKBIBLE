@@ -921,8 +921,9 @@ class RagEngine:
                     short_attr,
                 )
                 excerpt = (c.commentary_text or "").strip()
-                if len(excerpt) > 8000:
-                    excerpt = excerpt[:8000]
+                # 시연: 앞 구간만 주입. 이어서 요약은 유료 단계에서 확장.
+                if len(excerpt) > 2000:
+                    excerpt = excerpt[:2000] + "\n[…more text in DB; continue-summary later]"
                 label = src.author or src.title
                 comm_block.append(f"[{label}] ({c.passage_ref})\n{excerpt}")
                 ctx_lines.append(
