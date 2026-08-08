@@ -330,11 +330,22 @@ function DraggableChatbot() {
           (lang === "KO" ? "\n\n— 출처 —\n" : "\n\n— Sources —\n") +
           cites
             .map((c: any, i: number) => {
-              const title = c.title || c.source || "Source";
+              const author = (c.author || "").trim();
+              const title = (c.title || c.source || "Source").trim();
               const lic = c.license_type || c.copyright_status || c.license || "";
-              const attr = c.attribution || c.attribution_text || "";
-              const url = c.source_url || "";
-              return `${i + 1}. ${title}${lic ? ` (${lic})` : ""}${attr ? `\n   ${attr}` : ""}${url ? `\n   ${url}` : ""}`;
+              // 제목·attribution 중복 제거, 한 줄로 축약
+              let head = author && title && !title.includes(author) ? `${author} · ${title}` : author || title;
+              if (head.length > 80) head = `${head.slice(0, 77)}…`;
+              const line = `${i + 1}. ${head}${lic ? ` (${lic})` : ""}`;
+              const url = (c.source_url || "").trim();
+              // 긴 GitHub raw 경로 대신 호스트만 힌트
+              if (!url) return line;
+              try {
+                const u = new URL(url);
+                return `${line}\n   ${u.hostname}`;
+              } catch {
+                return line;
+              }
             })
             .join("\n");
       }

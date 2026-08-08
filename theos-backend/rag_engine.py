@@ -911,11 +911,22 @@ class RagEngine:
                     or src.copyright_status
                     or "Public Domain"
                 )
-                add_cite(src.title, src.author, lic_type, src.source_url, src.description or "")
-                excerpt = (c.commentary_text or "")[:1600]
-                comm_block.append(f"[{src.title}] ({c.passage_ref})\n{excerpt}")
+                # 출처는 짧게(저자·라이선스). 본문은 충분한 길이로 전달.
+                short_attr = f"{src.author or 'Commentator'} · {lic_type}".strip(" ·")
+                add_cite(
+                    src.author or src.title,
+                    src.author,
+                    lic_type,
+                    src.source_url,
+                    short_attr,
+                )
+                excerpt = (c.commentary_text or "").strip()
+                if len(excerpt) > 8000:
+                    excerpt = excerpt[:8000]
+                label = src.author or src.title
+                comm_block.append(f"[{label}] ({c.passage_ref})\n{excerpt}")
                 ctx_lines.append(
-                    f"[Commentary] {src.title} | {c.passage_ref}\n{excerpt}"
+                    f"[Commentary] {label} | {c.passage_ref}\n{excerpt}"
                 )
 
             for interp in v.interpretations:
@@ -1895,9 +1906,13 @@ class RagEngine:
                     if lic and not getattr(lic, "allow_ai_read", True):
                         continue
                     tag = "[Commentary]" if en else "[주석]"
+                    label = src.author or src.title
+                    body = (c.commentary_text or "").strip()
+                    if len(body) > 8000:
+                        body = body[:8000]
                     commentary_context += (
-                        f"{tag} {src.title} ({src.author}) — {c.passage_ref}\n"
-                        f"{(c.commentary_text or '')[:1200]}\n"
+                        f"{tag} {label} — {c.passage_ref}\n"
+                        f"{body}\n"
                     )
 
                 # 연관 구절(OpenBible CC BY) 주입 — 상위 8개

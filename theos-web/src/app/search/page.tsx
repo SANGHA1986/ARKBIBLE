@@ -1269,9 +1269,11 @@ function SearchInner() {
                         const isExpanded = expandedComments.has(idx);
                         return (
                           <div key={idx} className="p-3 bg-ark-bg rounded-lg border border-[#E8E2D9]">
-                            <div className="font-bold text-sm text-ark-brown">{c.author}</div>
+                            <div className="font-bold text-sm text-ark-brown">
+                              {c.short_cite || c.author}
+                            </div>
                             <div className="text-[10px] text-ark-grey mb-2">
-                              {c.title} · {c.license} · {c.passage_ref}
+                              {c.license} · {c.passage_ref}
                             </div>
                             <p
                               className={`text-xs text-ark-navy/85 leading-relaxed whitespace-pre-line ${
@@ -1313,7 +1315,7 @@ function SearchInner() {
                                   onClick={() =>
                                     askAiAbout(
                                       `${c.author} 주석(${c.passage_ref})을 한국어로 짧게 요약해 주세요. 등록된 영문 PD/CC0 본문만 근거로 하고 추측하지 마세요.`,
-                                      `Author: ${c.author}\nTitle: ${c.title}\nLicense: ${c.license}\nPassage: ${c.passage_ref}\n\n${String(c.text).slice(0, 3500)}`
+                                      `Author: ${c.author}\nLicense: ${c.license}\nPassage: ${c.passage_ref}\n\n${String(c.text || "")}`
                                     )
                                   }
                                   className="inline-flex items-center gap-1 text-[11px] font-semibold text-ark-brown hover:opacity-80"
@@ -1830,9 +1832,11 @@ function SearchInner() {
                     const isExpanded = expandedComments.has(idx);
                     return (
                       <div key={idx} className="p-3 bg-ark-bg rounded-lg border border-[#E8E2D9]">
-                        <div className="font-bold text-sm text-ark-brown">{c.author}</div>
+                        <div className="font-bold text-sm text-ark-brown">
+                          {c.short_cite || c.author}
+                        </div>
                         <div className="text-[10px] text-ark-grey mb-2">
-                          {c.title} · {c.license} · {c.passage_ref}
+                          {c.license} · {c.passage_ref}
                         </div>
                         <p
                           className={`text-xs text-ark-navy/85 leading-relaxed whitespace-pre-line ${
@@ -1874,7 +1878,7 @@ function SearchInner() {
                               onClick={() =>
                                 askAiAbout(
                                   `${c.author} 주석(${c.passage_ref})을 한국어로 짧게 요약해 주세요. 등록된 영문 PD/CC0 본문만 근거로 하고 추측하지 마세요.`,
-                                  `Author: ${c.author}\nTitle: ${c.title}\nLicense: ${c.license}\nPassage: ${c.passage_ref}\n\n${String(c.text).slice(0, 3500)}`
+                                  `Author: ${c.author}\nLicense: ${c.license}\nPassage: ${c.passage_ref}\n\n${String(c.text || "")}`
                                 )
                               }
                               className="inline-flex items-center gap-1 text-[11px] font-semibold text-ark-navy hover:text-ark-brown"

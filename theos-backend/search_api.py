@@ -157,12 +157,24 @@ def _fetch_commentaries(db: Session, book_row, chapter: int, verse: int = None, 
         lic = getattr(src, "license", None)
         if lic and not getattr(lic, "allow_ai_read", True):
             continue
+        author = (src.author or "").strip() or None
+        title = (src.title or "").strip() or "Commentary"
+        # UI/요약용 짧은 출처 라벨 (본문은 자르지 않음 · 과대 응답만 상한)
+        short_cite = author or title
+        if author and title and author.lower() not in title.lower():
+            short_cite = f"{author} · {title}"
+        if len(short_cite) > 72:
+            short_cite = short_cite[:69] + "…"
+        text = (c.commentary_text or "").strip()
+        if len(text) > 12000:
+            text = text[:12000]
         out.append({
-            "author": src.author or src.title,
-            "title": src.title,
+            "author": author or title,
+            "title": title,
+            "short_cite": short_cite,
             "passage_ref": c.passage_ref,
-            "license": src.copyright_status,
-            "text": (c.commentary_text or "")[:1200],
+            "license": src.copyright_status or (lic.license_type if lic else None) or "Public Domain",
+            "text": text,
         })
     return out
 
