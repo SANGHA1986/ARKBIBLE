@@ -1909,8 +1909,8 @@ class RagEngine:
                     tag = "[Commentary]" if en else "[주석]"
                     label = src.author or src.title
                     body = (c.commentary_text or "").strip()
-                    if len(body) > 8000:
-                        body = body[:8000]
+                    if len(body) > 2000:
+                        body = body[:2000] + "\n[…more in DB; paid continue later]"
                     commentary_context += (
                         f"{tag} {label} — {c.passage_ref}\n"
                         f"{body}\n"
