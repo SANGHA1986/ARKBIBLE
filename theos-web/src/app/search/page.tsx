@@ -218,7 +218,7 @@ function SearchInner() {
           suggested: "관련 구절",
           noHits: "등록된 연관 자료가 없습니다.",
           noHitsAssist:
-            "AI 어시스턴트에게 문의하세요. DB에 있는 기록만 근거로 답하며, 없는 내용은 추가 수집 예정이라고 안내합니다.",
+            "AI 어시스턴트에게 문의하세요. DB 설명·설교 개요·연구/기초 가이드·사용법 안내를 돕습니다. DB에 없는 내용은 「목회 가이드(참고)」로 표시합니다.",
           askAssistSearch: "어시스턴트에게 이 주제 문의",
           strong: "원어",
           scrap: "스크랩",
@@ -283,7 +283,7 @@ function SearchInner() {
           suggested: "Related verses",
           noHits: "No related records in the database.",
           noHitsAssist:
-            "Ask the AI assistant — answers use registered records only; missing topics are noted as planned.",
+            "Ask the AI assistant — DB explanations, sermon/study guides, and site tips. Non-DB parts are labeled as pastoral guide.",
           askAssistSearch: "Ask assistant about this topic",
           strong: "Lexicon",
           scrap: "Save",

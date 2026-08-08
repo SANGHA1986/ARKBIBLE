@@ -492,8 +492,8 @@ function DraggableChatbot() {
           <div className="flex-1 p-4 overflow-y-auto bg-ark-bg text-sm space-y-4">
             <div className="bg-white p-3 rounded-lg border border-[#E8E2D9] inline-block max-w-[90%] text-ark-navy shadow-sm leading-relaxed">
               {lang === "KO"
-                ? "연구 보조 어시스턴트입니다. DB에 등록된 기록만 근거로 설명합니다. 브라우저 탭을 닫으면 대화는 삭제됩니다. 생성 중에는 정지로 중단할 수 있습니다."
-                : "Research helper: answers from registered DB records only. Chat is cleared when you close this tab. You can stop a response anytime."}
+                ? "목회·연구 어시스턴트입니다. DB 설명뿐 아니라 설교 개요, 연구·기초 가이드, 사이트 사용 안내도 돕습니다. DB 근거와 「목회 가이드(참고)」를 구분해 답합니다. 탭을 닫으면 대화가 삭제됩니다."
+                : "Ministry & study assistant: DB explanations plus sermon outlines, study guides, and site help. Answers separate DB facts from pastoral guides. Chat clears when you close this tab."}
             </div>
 
             {messages.map((msg, idx) => (
