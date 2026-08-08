@@ -149,6 +149,72 @@ function cleanAssistantText(text: string): string {
     .trim();
 }
 
+/** 구절·주석·논문·원어 등 DB 조회 성격이면 db, 설교·가이드·일상 질문이면 think */
+function detectAssistantLoadingMode(query: string, hasDbContext: boolean): "db" | "think" {
+  if (hasDbContext) return "db";
+  const q = (query || "").toLowerCase();
+  const dbHints = [
+    "주석",
+    "논문",
+    "학술",
+    "원어",
+    "strong",
+    "lexicon",
+    "commentary",
+    "paper",
+    "journal",
+    "해석해",
+    "요약해",
+    "구절",
+    "창세기",
+    "출애굽",
+    "레위기",
+    "민수기",
+    "신명기",
+    "시편",
+    "잠언",
+    "이사야",
+    "예레미야",
+    "에스겔",
+    "다니엘",
+    "마태",
+    "마가",
+    "누가",
+    "요한",
+    "사도행전",
+    "로마서",
+    "고린도",
+    "갈라디아",
+    "에베소",
+    "빌립보",
+    "골로새",
+    "데살로니가",
+    "디모데",
+    "히브리",
+    "야고보",
+    "베드로",
+    "요한계시",
+    "genesis",
+    "exodus",
+    "psalm",
+    "isaiah",
+    "matthew",
+    "mark",
+    "luke",
+    "john",
+    "romans",
+    "acts",
+    "g00",
+    "h00",
+    "자료 설명",
+    "등록된",
+  ];
+  if (dbHints.some((h) => q.includes(h.toLowerCase()))) return "db";
+  if (/\b[gh]\d{3,5}\b/i.test(q)) return "db";
+  if (/\d+\s*:\s*\d+/.test(q)) return "db"; // 3:16 형태
+  return "think";
+}
+
 /** 자유 드래그 + 리사이즈. 대화는 sessionStorage(탭 종료 시 삭제). 창 크기만 localStorage. */
 function DraggableChatbot() {
   const { lang } = useLang();
@@ -157,6 +223,8 @@ function DraggableChatbot() {
   const [hydrated, setHydrated] = useState(false);
   const [inputVal, setInputVal] = useState("");
   const [loading, setLoading] = useState(false);
+  /** db = 공개자료 검색·해석 / think = 일반·설교·가이드 생각 중 */
+  const [loadingMode, setLoadingMode] = useState<"db" | "think">("db");
   const [dimensions, setDimensions] = useState({ width: 380, height: 500 });
   const abortRef = useRef<AbortController | null>(null);
   const stoppedByUserRef = useRef(false);
@@ -289,9 +357,11 @@ function DraggableChatbot() {
     if (!inputVal.trim() || loading) return;
     const userMsg = inputVal;
     let apiQuery = userMsg;
+    let hasDbCtx = false;
     try {
       const ctx = sessionStorage.getItem("ark_assistant_context");
       if (ctx) {
+        hasDbCtx = true;
         apiQuery =
           lang === "KO"
             ? `${userMsg}\n\n[참고 DB 기록]\n${ctx}`
@@ -303,6 +373,7 @@ function DraggableChatbot() {
     }
     setMessages((prev) => [...prev, { sender: "user", text: userMsg }]);
     setInputVal("");
+    setLoadingMode(detectAssistantLoadingMode(userMsg, hasDbCtx));
     setLoading(true);
     stoppedByUserRef.current = false;
 
@@ -528,7 +599,15 @@ function DraggableChatbot() {
                     className="w-2 h-2 bg-ark-grey rounded-full animate-bounce"
                     style={{ animationDelay: "300ms" }}
                   />
-                  <span>{lang === "KO" ? "공개 자료 검색·해석 중..." : "Searching registered sources…"}</span>
+                  <span>
+                    {loadingMode === "think"
+                      ? lang === "KO"
+                        ? "생각 중..."
+                        : "Thinking…"
+                      : lang === "KO"
+                        ? "공개 자료 검색·해석 중..."
+                        : "Searching registered sources…"}
+                  </span>
                 </div>
               </div>
             )}

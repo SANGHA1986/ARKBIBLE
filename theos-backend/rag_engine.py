@@ -2082,7 +2082,9 @@ class RagEngine:
                 "- How to use this website and what to look up next\n"
                 "- Everyday ministry conversation starters grounded in Scripture when possible\n\n"
                 "Truthfulness rules:\n"
-                "- Label clearly: 'From registered DB' vs 'Pastoral guide (reference)'.\n"
+                "- Label clearly but briefly: 'From registered DB' vs 'Pastoral guide (reference)'.\n"
+                "- For sermon/guide/basics requests: do NOT open with a long 'DB has almost nothing' apology. "
+                "One short label line is enough, then deliver the useful guide.\n"
                 "- Do NOT invent Strong numbers, fake commentary quotes, or fake paper findings.\n"
                 "- Prefer [Reference database information], [Commentary], verses, Strong/STEP when present.\n"
                 "- If DB is thin, still help with a practical guide, and say what is not in DB yet.\n"
@@ -2099,9 +2101,9 @@ class RagEngine:
             )
             user_prefix = f"User question: {query}\n\n[Reference database information]\n"
             empty_hint = (
-                "No closely matching DB rows. Still offer a helpful pastoral/study guide for the question, "
-                "clearly mark non-DB parts as 'Pastoral guide (reference)', "
-                "and suggest Explore / Lexicon / verse search paths on ARK."
+                "No closely matching DB rows. Still offer a helpful pastoral/study guide. "
+                "Use at most one short 'Pastoral guide (reference)' line—do not lecture about missing DB. "
+                "Optionally suggest one or two Explore/Lexicon searches at the end."
             )
         else:
             system_prompt = (
@@ -2115,7 +2117,9 @@ class RagEngine:
                 "- 사이트 사용법·다음에 무엇을 검색할지 안내\n"
                 "- 심방·일상 대화에 쓸 말씀 포인트(가능하면 성경·등록 자료 근거)\n\n"
                 "진실성 규칙:\n"
-                "- 「DB 등록 근거」와 「목회 가이드(참고)」를 구분해서 쓰십시오.\n"
+                "- 「DB 등록 근거」와 「목회 가이드(참고)」를 짧게 구분해서 쓰십시오.\n"
+                "- 설교·가이드·기초 신앙 요청에는 「DB에 기록이 거의 없어…」긴 사과문으로 시작하지 마십시오. "
+                "한 줄 표시(예: 목회 가이드(참고)) 후 바로 유용한 내용을 쓰십시오.\n"
                 "- 없는 Strong 번호·가짜 주석 인용·없는 논문 결과를 만들지 마십시오.\n"
                 "- [참고 데이터베이스 정보]·[주석]·구절·Strong/STEP이 있으면 우선 쓰십시오.\n"
                 "- DB가 얇아도 실용 가이드는 제공하되, DB에 없는 부분은 분명히 표시하십시오.\n"
@@ -2134,9 +2138,9 @@ class RagEngine:
             user_prefix = f"사용자 질문: {query}\n\n[참고 데이터베이스 정보]\n"
             empty_hint = (
                 "직접 일치하는 DB 기록이 거의 없습니다. "
-                "그래도 질문에 맞는 목회·연구 가이드를 제공하고, "
-                "DB 밖 내용은 「목회 가이드(참고)」로 표시하며, "
-                "탐색/원어/구절 검색으로 이어갈 경로를 안내하십시오."
+                "그래도 질문에 맞는 목회·연구 가이드를 바로 제공하십시오. "
+                "서두는 「목회 가이드(참고)」한 줄이면 충분하고, DB 부족을 길게 설명하지 마십시오. "
+                "끝에 탐색/원어 검색어를 짧게 안내해도 됩니다."
             )
 
         user_content = (
